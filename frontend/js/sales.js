@@ -1811,7 +1811,10 @@ function initGenericDropdown(dropdownId) {
 
         optionDiv.addEventListener('click', () => {
             select.value = opt.value;
-            triggerText.textContent = opt.textContent;
+            const currentTriggerText = dropdown.querySelector('.trigger-text');
+            if (currentTriggerText) {
+                currentTriggerText.textContent = opt.textContent;
+            }
 
             panel.querySelectorAll('.custom-dropdown-option').forEach(el => el.classList.remove('selected'));
             optionDiv.classList.add('selected');
