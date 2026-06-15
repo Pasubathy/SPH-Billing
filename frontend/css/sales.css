@@ -253,9 +253,7 @@
     color: var(--primary-color);
 }
 
-.price-summary-body.expanded .grand-total-row {
-    padding-top: 12px;
-}
+
 
 .input-group-row {
     display: flex;
