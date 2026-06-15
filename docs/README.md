@@ -1,6 +1,6 @@
 # SPH Software - Full-Stack Billing System
 
-A premium jewellery/hardware store billing and inventory management application designed to run on Windows environments. The system uses a native PowerShell HTTP server backend, serving files and REST JSON endpoints without external dependencies (like Node.js).
+A premium hardware store billing and inventory management application designed to run on Windows environments. The system uses a native PowerShell HTTP server backend, serving files and REST JSON endpoints without external dependencies (like Node.js).
 
 ---
 
