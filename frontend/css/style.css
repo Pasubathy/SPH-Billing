@@ -588,7 +588,7 @@ body.app-body {
 .units-table {
     width: 100%;
     border-collapse: collapse;
-    border: 1px solid var(--border-color);
+    border: none;
     border-radius: 8px;
     overflow: hidden;
     background-color: white;
