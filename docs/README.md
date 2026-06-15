@@ -73,5 +73,5 @@ To run the application locally on Windows, you only need PowerShell (no Node.js 
 ---
 
 ## 📝 Credentials
-* **Username**: `SPH`
-* **Password**: `Admin`
+* **Username**: `SPH.admin`
+* **Password**: `SPH@26`
