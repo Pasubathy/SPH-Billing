@@ -347,26 +347,74 @@ function renderBillingTable() {
         // Unit
         const tdUnit = document.createElement('td');
         if (row.unitOptions.length > 1) {
-            // Multiple units â†’ dropdown
+            // Multiple units -> custom dropdown
+            const dropdownDiv = document.createElement('div');
+            dropdownDiv.className = 'custom-dropdown';
+            const dropdownId = `billingUnitDropdown_${index}_${Date.now()}`;
+            dropdownDiv.id = dropdownId;
+            dropdownDiv.style.width = '100%';
+            dropdownDiv.style.height = '34px';
+
             const unitSelect = document.createElement('select');
-            unitSelect.className = 'cell-select';
+            unitSelect.style.display = 'none';
             unitSelect.setAttribute('data-row', index);
+
+            let selectedLabel = row.unitOptions[0].label;
+
             row.unitOptions.forEach((uOpt, uIdx) => {
                 const opt = document.createElement('option');
                 opt.value = uIdx;
                 opt.textContent = uOpt.label;
-                if (uIdx === row.unitIndex) opt.selected = true;
+                if (uIdx === row.unitIndex) {
+                    opt.selected = true;
+                    selectedLabel = uOpt.label;
+                }
                 unitSelect.appendChild(opt);
             });
+
             unitSelect.addEventListener('change', (e) => {
                 const uIdx = parseInt(e.target.value);
                 billingRows[index].unitIndex = uIdx;
                 billingRows[index].rate = billingRows[index].unitOptions[uIdx].price;
                 recalcRow(index, 'unit');
             });
-            tdUnit.appendChild(unitSelect);
+            dropdownDiv.appendChild(unitSelect);
+
+            const trigger = document.createElement('div');
+            trigger.className = 'custom-dropdown-trigger';
+            trigger.style.height = '100%';
+            trigger.style.padding = '0 8px';
+            trigger.style.borderRadius = '4px';
+            trigger.style.border = '1px solid var(--border-color)';
+            trigger.style.backgroundColor = 'white';
+            trigger.style.display = 'flex';
+            trigger.style.alignItems = 'center';
+            trigger.style.justifyContent = 'space-between';
+            trigger.style.cursor = 'pointer';
+            trigger.style.fontSize = '13px';
+            
+            trigger.innerHTML = `
+                <span class="trigger-text">${selectedLabel}</span>
+                <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; color: var(--text-muted);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            `;
+            dropdownDiv.appendChild(trigger);
+
+            const panel = document.createElement('div');
+            panel.className = 'custom-dropdown-panel';
+            panel.style.top = 'calc(100% + 4px)';
+            panel.style.zIndex = '100';
+            panel.style.width = '100%';
+            dropdownDiv.appendChild(panel);
+
+            tdUnit.appendChild(dropdownDiv);
+
+            setTimeout(() => {
+                if (document.getElementById(dropdownId)) {
+                    initGenericDropdown(dropdownId);
+                }
+            }, 0);
         } else {
-            // Single unit â†’ text
+            // Single unit -> text
             tdUnit.textContent = row.unitOptions[0].label;
             tdUnit.style.textAlign = 'left';
         }
