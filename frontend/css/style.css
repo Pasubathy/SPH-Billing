@@ -665,10 +665,10 @@ td, table td {
 }
 
 .col-decimal-inner {
-    width: 120px;
+    width: 160px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 2px 4px;
 }
 

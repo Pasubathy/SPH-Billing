@@ -36,6 +36,16 @@ async function saveUnits(silent = false) {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadUnits();
+    
+    // Global click to close custom dropdowns
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.custom-dropdown')) {
+            document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+        }
+    });
+
+    // Init Add Row Dropdown
+    initCustomDropdown('addUnitDecimalDropdown');
 
     // Elements
     const searchInput = document.getElementById('unitSearch') || document.querySelector('.search-box input');
@@ -62,6 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
             newUnitName.value = '';
             newUnitShortName.value = '';
             if (newUnitDecimal) newUnitDecimal.value = 'No';
+            // Reset dropdown trigger text
+            const trig = document.querySelector('#addUnitDecimalDropdown .trigger-text');
+            if(trig) trig.textContent = 'No';
+            document.querySelectorAll('#addUnitDecimalDropdown .custom-dropdown-option').forEach(el => {
+                el.classList.remove('selected');
+                if(el.dataset.value === 'No') el.classList.add('selected');
+            });
             renderUnits();
         } else {
             showToast('Please enter both Unit Name and Short Name', 'error');
@@ -149,10 +166,17 @@ function renderUnits(filterText = '') {
             </div>
             <div class="vertical-divider"></div>
             <div class="col-decimal-inner">
-                <select class="inner-input decimal-field" style="cursor: pointer; text-align: center;">
-                    <option value="Yes" ${unit.allowDecimal === 'Yes' ? 'selected' : ''}>Yes</option>
-                    <option value="No" ${unit.allowDecimal !== 'Yes' ? 'selected' : ''}>No</option>
-                </select>
+                <div class="custom-dropdown" id="unitDecimalDropdown-${index}" style="width: 100%; height: 35px; position: relative;">
+                    <select class="inner-input decimal-field" style="display:none;">
+                        <option value="Yes" ${unit.allowDecimal === 'Yes' ? 'selected' : ''}>Yes</option>
+                        <option value="No" ${unit.allowDecimal !== 'Yes' ? 'selected' : ''}>No</option>
+                    </select>
+                    <div class="custom-dropdown-trigger" style="height: 100%; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: white; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 13px; font-weight: 500;">
+                        <span class="trigger-text">${unit.allowDecimal === 'Yes' ? 'Yes' : 'No'}</span>
+                        <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                    <div class="custom-dropdown-panel" style="width: 100%; min-width: 100%; max-width: 100%; right: 0;"></div>
+                </div>
             </div>
             <div class="vertical-divider"></div>
             <div class="col-action-inner">
@@ -183,5 +207,57 @@ function renderUnits(filterText = '') {
     if (window.lucide) {
         lucide.createIcons();
     }
+    
+    // Init all row dropdowns
+    units.forEach((u, idx) => {
+        if (document.getElementById(`unitDecimalDropdown-${idx}`)) {
+            initCustomDropdown(`unitDecimalDropdown-${idx}`);
+        }
+    });
 }
 
+function initCustomDropdown(dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+
+    let trigger = dropdown.querySelector('.custom-dropdown-trigger');
+    const newTrigger = trigger.cloneNode(true);
+    trigger.parentNode.replaceChild(newTrigger, trigger);
+    trigger = newTrigger;
+
+    const select = dropdown.querySelector('select');
+    const triggerText = trigger.querySelector('.trigger-text');
+    const panel = dropdown.querySelector('.custom-dropdown-panel');
+
+    panel.innerHTML = '';
+
+    Array.from(select.options).forEach((opt, index) => {
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'custom-dropdown-option';
+        optionDiv.textContent = opt.textContent;
+        optionDiv.dataset.value = opt.value;
+
+        if (select.value === opt.value) {
+            optionDiv.classList.add('selected');
+        }
+
+        optionDiv.addEventListener('click', () => {
+            select.value = opt.value;
+            triggerText.textContent = opt.textContent;
+            panel.querySelectorAll('.custom-dropdown-option').forEach(el => el.classList.remove('selected'));
+            optionDiv.classList.add('selected');
+            dropdown.classList.remove('open');
+            select.dispatchEvent(new Event('change'));
+        });
+
+        panel.appendChild(optionDiv);
+    });
+
+    trigger.addEventListener('click', (e) => {
+        const isOpen = dropdown.classList.contains('open');
+        document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+        if (!isOpen) {
+            dropdown.classList.add('open');
+        }
+    });
+}
