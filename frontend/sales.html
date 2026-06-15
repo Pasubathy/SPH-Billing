@@ -202,14 +202,18 @@
                         </div>
                         <div style="padding: 16px;">
                             <div class="input-addon-group" style="height: 38px;">
-                                <div class="select-wrapper-inline" style="border-left: none; border-right: 1px solid var(--border-color); min-width: 65px; border-radius: 6px 0 0 6px;">
-                                    <select class="input-addon-select-custom" id="billDiscountType" style="padding-left: 12px; font-weight: 500;">
+                                <div class="custom-dropdown" id="billDiscountDropdown" style="min-width: 65px; height: 100%; border-right: 1px solid var(--border-color);">
+                                    <select id="billDiscountType" style="display:none;">
                                         <option value="rupee">₹</option>
                                         <option value="percent">%</option>
                                     </select>
-                                    <svg class="select-chevron-icon-inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    <div class="custom-dropdown-trigger" style="height: 100%; padding: 0 8px 0 12px; border: none; border-radius: 6px 0 0 6px; background-color: transparent; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 14px; font-weight: 500;">
+                                        <span class="trigger-text">₹</span>
+                                        <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                    <div class="custom-dropdown-panel" style="width: 100%; min-width: 65px; top: calc(100% + 4px); z-index: 100;"></div>
                                 </div>
-                                <input type="number" id="billDiscountInput" placeholder="0" min="0" value="0" style="border-radius: 0 6px 6px 0;">
+                                <input type="number" id="billDiscountInput" placeholder="0" min="0" value="0" style="flex: 1; border: none; border-radius: 0 6px 6px 0; padding: 0 12px; outline: none; font-size: 14px;">
                             </div>
                         </div>
                     </div>
@@ -273,11 +277,15 @@
                     </div>
                     
                     <!-- Export Dropdown -->
-                    <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
-                        <select id="salesListExport" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                    <div class="custom-dropdown" id="salesListExportDropdown" style="width: 100px; height: 35px;">
+                        <select id="salesListExport" style="display:none;">
                             <option value="">Export</option>
                         </select>
-                        <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                        <div class="custom-dropdown-trigger" style="height: 100%; border-radius: 6px; background-color: white !important; font-size: 13px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); cursor: pointer;">
+                            <span class="trigger-text">Export</span>
+                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        <div class="custom-dropdown-panel" style="top: calc(100% + 4px); z-index: 100;"></div>
                     </div>
                 </div>
 
@@ -342,11 +350,15 @@
                     
                     <div style="display: flex; gap: 8px;">
                         <!-- Export Dropdown -->
-                        <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
-                            <select id="custExportSelect" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                        <div class="custom-dropdown" id="custExportDropdown" style="width: 100px; height: 35px;">
+                            <select id="custExportSelect" style="display:none;">
                                 <option value="">Export</option>
                             </select>
-                            <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                            <div class="custom-dropdown-trigger" style="height: 100%; border-radius: 6px; background-color: white !important; font-size: 13px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); cursor: pointer;">
+                                <span class="trigger-text">Export</span>
+                                <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="custom-dropdown-panel" style="top: calc(100% + 4px); z-index: 100;"></div>
                         </div>
 
                         <!-- + Create Button -->
@@ -406,11 +418,15 @@
                     
                     <div style="display: flex; gap: 8px;">
                         <!-- Export Dropdown -->
-                        <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
-                            <select id="arExportSelect" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                        <div class="custom-dropdown" id="arExportDropdown" style="width: 100px; height: 35px;">
+                            <select id="arExportSelect" style="display:none;">
                                 <option value="">Export</option>
                             </select>
-                            <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                            <div class="custom-dropdown-trigger" style="height: 100%; border-radius: 6px; background-color: white !important; font-size: 13px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); cursor: pointer;">
+                                <span class="trigger-text">Export</span>
+                                <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="custom-dropdown-panel" style="top: calc(100% + 4px); z-index: 100;"></div>
                         </div>
 
                         <!-- + Create Button -->

@@ -38,6 +38,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 10. Setup Bill Discount listeners
     setupBillDiscountListeners();
 
+    // Init custom export dropdowns
+    initGenericDropdown('salesListExportDropdown');
+    initGenericDropdown('custExportDropdown');
+    initGenericDropdown('arExportDropdown');
+
     // 11. Setup Sales List Tab toggles
     setupSalesListTabs();
 
@@ -1088,6 +1093,7 @@ async function setupCustomerModal() {
 // BILL DISCOUNT SETUP
 // ============================================================
 function setupBillDiscountListeners() {
+    initGenericDropdown('billDiscountDropdown');
     const typeSelect = document.getElementById('billDiscountType');
     const discountInput = document.getElementById('billDiscountInput');
 
