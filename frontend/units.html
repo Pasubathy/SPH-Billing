@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Units</title>
+    <link rel="stylesheet" href="css/style.css?v=3">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item active">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Tabs -->
+            <div class="page-tabs">
+                <a href="items.html" class="tab">Items</a>
+                <a href="category.html" class="tab">Category</a>
+                <a href="units.html" class="tab active">Units</a>
+            </div>
+
+            <div class="summary-card" style="margin: 0; padding: 16px; display: flex; flex-direction: column; border-top: none; border-left: none; border-right: none; border-radius: 0; flex: 1; min-height: 0;">
+                <!-- Page Header -->
+                <div class="page-header" style="padding: 0 0 16px 0; border-bottom: none;">
+                    <div class="page-title-group">
+                        <h1 class="page-title">Units List</h1>
+                        <div class="search-box">
+                            <input type="text" id="unitSearch" placeholder="Search">
+                            <i data-lucide="search" class="search-icon"></i>
+                        </div>
+                        <button class="btn btn-outline" id="clearUnitFilterBtn" style="padding: 8px; display: flex; align-items: center; justify-content: center; height: 35px;" title="Clear Filter">
+                            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-outline">
+                            Export <i data-lucide="chevron-down"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Units Table/Form -->
+                <div class="units-content-wrapper">
+                    <div class="units-table">
+                        <div class="units-header-row unified-row">
+                            <div class="col-sno-inner">S. No.</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-name-inner">Unit Name</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-shortname-inner">Short Name</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-decimal-inner">Decimal</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-action-inner">Action</div>
+                        </div>
+                        
+                        <div class="units-body" id="unitsList">
+                            <!-- Dynamic unit rows will be rendered here -->
+                        </div>
+                        <!-- Add Unit Row -->
+                        <div class="unit-row unified-row" id="addUnitRow">
+                            <div class="col-sno-inner" id="newUnitSno">1</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-name-inner">
+                                <input type="text" id="newUnitName" placeholder="Unit Name" class="inner-input">
+                            </div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-shortname-inner">
+                                <input type="text" id="newUnitShortName" placeholder="Short Name" class="inner-input">
+                            </div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-decimal-inner">
+                                <select id="newUnitDecimal" class="inner-input" style="cursor: pointer; text-align: center;">
+                                    <option value="Yes">Yes</option>
+                                    <option value="No" selected>No</option>
+                                </select>
+                            </div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-action-inner">
+                                <button id="addUnitBtn" class="btn-icon-primary"><i data-lucide="plus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete Confirmation Modal -->
+            <div id="deleteModal" class="modal">
+                <div class="modal-content">
+                    <h3 class="modal-title">Delete Unit</h3>
+                    <p class="modal-message">Do you want to delete this item?</p>
+                    <div class="modal-actions">
+                        <button class="btn btn-outline" id="cancelDelete">Cancel</button>
+                        <button class="btn btn-primary" id="confirmDelete" style="background-color: #EF4444;">Yes, Delete</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sticky Bottom Bar -->
+            <div class="sticky-action-bar">
+                <button class="btn btn-primary" id="saveUnitsBtn">Save</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script src="js/units.js"></script>
+</body>
+</html>

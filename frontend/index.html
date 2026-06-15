@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing</title>
+    <meta name="theme-color" content="#000B58">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SPH Billing">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/Images/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/Images/icon-192.png">
+    <link rel="stylesheet" href="css/style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo-container">
+                    <img src="Images/Login_Logo.png" alt="SPH Logo" class="logo">
+                </div>
+                <h1 class="login-title">Login</h1>
+            </div>
+
+            <div class="login-body">
+                <p class="subtitle">Fill the details to continue</p>
+
+                <form id="loginForm">
+                    <div class="input-group">
+                        <label for="username">Username</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="user" class="input-icon"></i>
+                            <input type="text" id="username" placeholder="Enter Username" required>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="lock" class="input-icon"></i>
+                            <input type="password" id="password" placeholder="Enter Password" required>
+                            <button type="button" class="toggle-password" id="togglePassword">
+                                <i data-lucide="eye-off" class="eye-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="login-btn">
+                        <i data-lucide="log-in" class="btn-icon"></i>
+                        Login
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW error:', err));
+            });
+        }
+    </script>
+</body>
+
+</html>

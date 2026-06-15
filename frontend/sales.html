@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Sales</title>
+    <link rel="stylesheet" href="css/style.css?v=4">
+    <link rel="stylesheet" href="css/sales.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item active">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content" style="display: flex; flex-direction: column; overflow: hidden; background-color: #F8FAFC;">
+            <!-- Tabs -->
+            <div class="page-tabs" style="padding: 0 24px 0 0; border-bottom: 1px solid var(--border-color); background-color: white;">
+                <a href="#" class="tab active" id="tabBilling">Billing</a>
+                <a href="#" class="tab" id="tabSalesList">Sales List</a>
+                <a href="#" class="tab" id="tabCustomer">Customer</a>
+                <a href="#" class="tab" id="tabAmountReceived">Amount Received</a>
+            </div>
+
+            <!-- Billing Workspace -->
+            <div class="billing-workspace">
+                
+                <!-- Left Panel: Grid & Entry -->
+                <div class="billing-left-panel">
+                    
+                    <!-- Top Info Bar -->
+                    <div class="billing-info-bar">
+                        <div class="billing-screen-tab">Screen 1</div>
+                        <div class="billing-info-right">
+                            <div class="billing-info-item">
+                                <i data-lucide="file-text" style="width: 16px; height: 16px; color: var(--primary-color);"></i>
+                                <span id="invoiceNumber">INV001</span>
+                            </div>
+                            <div class="billing-info-item">
+                                <i data-lucide="calendar" style="width: 16px; height: 16px; color: var(--primary-color);"></i>
+                                <span id="billingDate"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="billing-search-container" style="padding: 12px; border-bottom: 1px solid var(--border-color); background-color: white;">
+                        <div class="billing-search-group">
+                            <div class="billing-search-input-wrapper">
+                                <input type="text" id="billingSearchInput" class="billing-search-input" placeholder="Search by Code, Item Name" autocomplete="off">
+                                <div id="billingSearchDropdown" class="billing-search-dropdown"></div>
+                            </div>
+                            <button class="billing-barcode-btn" id="billingBarcodeBtn">
+                                <i data-lucide="scan" style="width: 18px; height: 18px; margin-right: 8px; stroke-width: 2.2;"></i>
+                                <span>Scan Tag</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Billing Grid Table -->
+                    <div class="billing-grid-container">
+                        <table class="billing-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">S. No.</th>
+                                    <th style="width: 140px;">Item Name</th>
+                                    <th style="width: 80px;">Qty</th>
+                                    <th style="width: 100px;">Unit</th>
+                                    <th style="width: 100px;">Rate</th>
+                                    <th style="width: 120px;">Final Amt</th>
+                                    <th style="width: 80px;">Tax %</th>
+                                    <th style="width: 100px;">Tax Amt</th>
+                                    <th style="width: 120px;">Total Amt</th>
+                                    <th style="width: 60px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billingTableBody">
+                                <!-- Rows will be added dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+                <!-- Right Panel: Summary -->
+                <div class="billing-right-panel">
+                    
+                    <!-- Customer Details -->
+                    <div class="summary-card">
+                        <div class="summary-card-header">
+                            <span class="summary-card-title">Customer Details</span>
+                            <button class="btn-text-primary" id="addCustomerBtnHeader"><i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> Add</button>
+                        </div>
+                        <div class="customer-empty-state" id="customerEmptyState">
+                            <i data-lucide="plus-square" style="width: 16px; height: 16px; color: var(--primary-color);"></i>
+                            <span>Click here to add customer</span>
+                        </div>
+                        <div class="customer-selected-state" id="customerSelectedState" style="display: none; padding: 12px 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span id="selectedCustName" style="font-weight: 600; font-size: 14px; color: var(--text-main);"></span>
+                                <button class="btn-text-primary" id="changeCustomerBtn" style="font-size: 12px; background: none; border: none; cursor: pointer; padding: 0;">Change</button>
+                            </div>
+                            <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 2px;">
+                                <span id="selectedCustMobile"></span>
+                                <span id="selectedCustTaxInfo" style="display: none;">GSTIN: <span id="selectedCustGST"></span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Price Summary -->
+                    <div class="summary-card">
+                        <div class="summary-card-header" id="priceSummaryHeader" style="border-bottom: none; padding-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                            <span class="summary-card-title">Price Summary</span>
+                            <button id="toggleSummaryBtn" style="background: #000B58; border: none; width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; color: white;">
+                                <i data-lucide="plus" style="width: 14px; height: 14px; stroke-width: 3;"></i>
+                            </button>
+                        </div>
+                        <div class="price-summary-body">
+                            <div id="priceSummaryDetails" style="display: none; flex-direction: column; gap: 4px;">
+                                <div class="summary-row">
+                                    <span>Sub Total</span>
+                                    <span id="summarySubTotal">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Discount</span>
+                                    <span id="summaryDiscount">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>After Discount</span>
+                                    <span id="summaryAfterDiscount">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span id="summarySGSTLabel">SGST</span>
+                                    <span id="summarySGST">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span id="summaryCGSTLabel">CGST</span>
+                                    <span id="summaryCGST">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Total</span>
+                                    <span id="summaryTotal">₹0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Round Off</span>
+                                    <span id="summaryRoundOff">0.00</span>
+                                </div>
+                            </div>
+                            <div class="summary-row grand-total-row">
+                                <span>Grand Total</span>
+                                <span id="summaryGrandTotal">₹0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Discount & Other Charges -->
+                    <div class="summary-card">
+                        <div class="summary-card-header" style="border-bottom: none; padding-bottom: 8px;">
+                            <span class="summary-card-title">Discount & Other Charges</span>
+                        </div>
+                        <div style="padding: 16px;">
+                            <div class="input-addon-group" style="height: 38px;">
+                                <div class="select-wrapper-inline" style="border-left: none; border-right: 1px solid var(--border-color); min-width: 65px; border-radius: 6px 0 0 6px;">
+                                    <select class="input-addon-select-custom" id="billDiscountType" style="padding-left: 12px; font-weight: 500;">
+                                        <option value="rupee">₹</option>
+                                        <option value="percent">%</option>
+                                    </select>
+                                    <svg class="select-chevron-icon-inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                                <input type="number" id="billDiscountInput" placeholder="0" min="0" value="0" style="border-radius: 0 6px 6px 0;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Received Amount -->
+                    <div class="summary-card" id="receivedAmountCard">
+                        <div class="summary-card-header" style="border-bottom: none; padding-bottom: 8px;">
+                            <span class="summary-card-title">Received Amount</span>
+                        </div>
+                        <div id="receivedRowsContainer" style="display: flex; flex-direction: column; gap: 8px; padding: 16px;">
+                            <!-- Rows will be dynamically loaded/rendered by sales.js -->
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Sales List Workspace -->
+            <div id="salesListWorkspace" class="sales-list-workspace" style="display: none; flex: 1; flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; background-color: #F8FAFC;">
+                
+                <!-- Stat Cards -->
+                <div class="sales-list-cards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+                    <!-- Total Amount Card -->
+                    <div class="sales-stat-card card-total" style="background: white; border: 1.5px solid #000B58; border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <span style="font-size: 13px; font-weight: 500; color: var(--text-muted);">Total Amount</span>
+                        <span id="salesStatTotalAmount" style="font-size: 20px; font-weight: 700; color: #000B58; text-align: right;">₹0.00</span>
+                    </div>
+                    <!-- Total Amount Received Card -->
+                    <div class="sales-stat-card card-received" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <span style="font-size: 13px; font-weight: 500; color: var(--text-muted);">Total Amount Received</span>
+                        <span id="salesStatTotalReceived" style="font-size: 20px; font-weight: 700; color: #22C55E; text-align: right;">₹0.00</span>
+                    </div>
+                    <!-- Amount to Receive Card -->
+                    <div class="sales-stat-card card-pending" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <span style="font-size: 13px; font-weight: 500; color: var(--text-muted);">Amount to Receive</span>
+                        <span id="salesStatTotalPending" style="font-size: 20px; font-weight: 700; color: #EF4444; text-align: right;">₹0.00</span>
+                    </div>
+                </div>
+
+                <!-- Controls Bar -->
+                <div class="sales-list-controls" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 700; font-size: 18px; color: var(--text-main);">Sales List</span>
+                        
+                        <!-- Date Filter Button -->
+                        <button class="date-filter-btn" id="salesListDateFilterBtn" data-target="salesList" style="background-color: white; font-size: 13px; border-radius: 6px; height: 35px; border: 1px solid var(--border-color); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; min-width: 110px; font-family: inherit;">
+                            <span class="date-filter-text" id="salesListDateFilterText">Date</span>
+                            <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                        </button>
+
+                        <!-- Search Bar -->
+                        <div class="sales-search-box" style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; background: white; height: 35px; width: 240px; padding: 0 10px; box-sizing: border-box;">
+                            <input type="text" id="salesListSearchInput" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 13px; width: 100%;">
+                            <i data-lucide="search" id="salesSearchIcon" style="width: 14px; height: 14px; color: var(--text-muted); margin-left: 4px;"></i>
+                        </div>
+
+                        <!-- Cancel Button [ x ] -->
+                        <button id="clearSalesSearchBtn" style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 35px; width: 35px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
+                            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Export Dropdown -->
+                    <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
+                        <select id="salesListExport" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                            <option value="">Export</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                    </div>
+                </div>
+
+                <!-- Table Content -->
+                <div class="billing-left-panel" style="flex: 1; min-height: 250px; background: white; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div class="billing-grid-container" style="flex: 1; overflow-y: auto;">
+                        <table class="billing-table">
+                            <thead>
+                                <tr style="height: 40px;">
+                                    <th style="width: 70px; text-align: left;">S. No.</th>
+                                    <th style="width: 120px; text-align: left;">Date</th>
+                                    <th style="width: 120px; text-align: left;">INV No</th>
+                                    <th style="width: 250px; text-align: left;">Customer Name</th>
+                                    <th style="width: 180px; text-align: left;">Invoice Amount</th>
+                                    <th style="width: 150px; text-align: left;">Pending</th>
+                                    <th style="width: 120px; text-align: left;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesListTableBody">
+                                <!-- Dynamic rows rendered here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Customer Workspace -->
+            <div id="customerWorkspace" class="customer-workspace" style="display: none; flex: 1; flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; background-color: #F8FAFC;">
+                
+                <!-- Stat Cards -->
+                <div class="sales-list-cards" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                    <!-- Total Customer Card -->
+                    <div class="sales-stat-card card-total" style="background: white; border: 1.5px solid #000B58; border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <span style="font-size: 13px; font-weight: 500; color: var(--text-muted);">Total Customer</span>
+                        <span id="custStatTotalCustomer" style="font-size: 20px; font-weight: 700; color: #000B58; text-align: right;">0</span>
+                    </div>
+                    <!-- Amount To Receive Card -->
+                    <div class="sales-stat-card card-pending" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <span style="font-size: 13px; font-weight: 500; color: var(--text-muted);">Amount To Receive</span>
+                        <span id="custStatAmountToReceive" style="font-size: 20px; font-weight: 700; color: #EF4444; text-align: right;">₹0</span>
+                    </div>
+                </div>
+
+                <!-- Controls Bar -->
+                <div class="sales-list-controls" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 700; font-size: 18px; color: var(--text-main);">Customer List</span>
+                        
+
+                        <!-- Search Bar -->
+                        <div class="sales-search-box" style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; background: white; height: 35px; width: 240px; padding: 0 10px; box-sizing: border-box;">
+                            <input type="text" id="custSearchInput" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 13px; width: 100%;">
+                            <i data-lucide="search" id="custSearchIcon" style="width: 14px; height: 14px; color: var(--text-muted); margin-left: 4px;"></i>
+                        </div>
+
+                        <!-- Cancel Button [ x ] -->
+                        <button id="clearCustSearchBtn" style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 35px; width: 35px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
+                            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <!-- Export Dropdown -->
+                        <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
+                            <select id="custExportSelect" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                                <option value="">Export</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                        </div>
+
+                        <!-- + Create Button -->
+                        <button id="addCustFromListBtn" style="height: 35px; padding: 0 12px; border: none; border-radius: 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; background: #000B58; cursor: pointer; color: white; font-weight: 600; box-sizing: border-box; font-family: inherit;">
+                            <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                            <span>Create</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Content -->
+                <div class="billing-left-panel" style="flex: 1; min-height: 250px; background: white; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div class="billing-grid-container" style="flex: 1; overflow-y: auto;">
+                        <table class="billing-table">
+                            <thead>
+                                <tr style="height: 40px;">
+                                    <th style="width: 70px; text-align: left;">S. No.</th>
+                                    <th style="width: 250px; text-align: left;">Customer Name</th>
+                                    <th style="width: 200px; text-align: left;">Mobile Number</th>
+                                    <th style="width: 200px; text-align: left;">Total Amount</th>
+                                    <th style="width: 180px; text-align: left;">Pending</th>
+                                </tr>
+                            </thead>
+                            <tbody id="customerTableBody">
+                                <!-- Dynamic rows rendered here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Amount Received Workspace -->
+            <div id="amountReceivedWorkspace" class="amount-received-workspace" style="display: none; flex: 1; flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; background-color: #F8FAFC;">
+                <!-- Controls Bar -->
+                <div class="sales-list-controls" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 700; font-size: 18px; color: var(--text-main);">Amount Received</span>
+                        
+                        <!-- Date Filter Button -->
+                        <button class="date-filter-btn" id="arListDateFilterBtn" data-target="arList" style="background-color: white; font-size: 13px; border-radius: 6px; height: 35px; border: 1px solid var(--border-color); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; min-width: 110px; font-family: inherit;">
+                            <span class="date-filter-text" id="arListDateFilterText">Date</span>
+                            <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                        </button>
+                        
+                        <!-- Search Bar -->
+                        <div class="sales-search-box" style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; background: white; height: 35px; width: 240px; padding: 0 10px; box-sizing: border-box;">
+                            <input type="text" id="arSearchInput" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 13px; width: 100%;">
+                            <i data-lucide="search" id="arSearchIcon" style="width: 14px; height: 14px; color: var(--text-muted); margin-left: 4px;"></i>
+                        </div>
+
+                        <!-- Cancel Button [ x ] -->
+                        <button id="clearArSearchBtn" style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 35px; width: 35px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
+                            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <!-- Export Dropdown -->
+                        <div class="select-wrapper-custom" style="width: 100px; height: 35px;">
+                            <select id="arExportSelect" style="background-color: white !important; font-size: 13px; border-radius: 6px; height: 100%; padding-right: 28px;">
+                                <option value="">Export</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="select-chevron-icon" style="right: 8px; width: 14px; height: 14px;"></i>
+                        </div>
+
+                        <!-- + Create Button -->
+                        <button id="createArBtn" style="height: 35px; padding: 0 12px; border: none; border-radius: 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; background: #000B58; cursor: pointer; color: white; font-weight: 600; box-sizing: border-box; font-family: inherit;">
+                            <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                            <span>Create</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Content -->
+                <div class="billing-left-panel" style="flex: 1; min-height: 250px; background: white; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div class="billing-grid-container" style="flex: 1; overflow-y: auto;">
+                        <table class="billing-table">
+                            <thead>
+                                <tr style="height: 40px;">
+                                    <th style="width: 70px; text-align: left;">S. No.</th>
+                                    <th style="width: 150px; text-align: left;">Date</th>
+                                    <th style="width: 150px; text-align: left;">AR No</th>
+                                    <th style="width: 250px; text-align: left;">Customer Name</th>
+                                    <th style="width: 200px; text-align: left;">Mobile Number</th>
+                                    <th style="width: 200px; text-align: left;">Amount Received</th>
+                                </tr>
+                            </thead>
+                            <tbody id="arTableBody">
+                                <!-- Dynamic rows rendered here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Amount Received Workspace -->
+            <div id="createAmountReceivedWorkspace" class="create-ar-workspace" style="display: none; flex: 1; flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; background-color: #F8FAFC;">
+                <!-- Title Bar -->
+                <div style="font-weight: 700; font-size: 18px; color: var(--text-main); margin-top: 8px;">Create Amount Received</div>
+
+                <!-- Main Content Row -->
+                <div style="display: flex; gap: 16px; align-items: flex-start; flex: 1;">
+                    <!-- Left side (Basic Details & Pending Bills) -->
+                    <div style="flex: 2; display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+                        <!-- Basic Details Card -->
+                        <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+                            <div style="font-weight: 700; font-size: 14px; color: var(--text-main); border-bottom: 1px solid #E5E7EB; padding-bottom: 8px; margin-bottom: 4px;">Basic Details</div>
+                            
+                            <div style="display: flex; gap: 16px;">
+                                <!-- AR No -->
+                                <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">AR No <span style="color: #EF4444;">*</span></label>
+                                    <input type="text" id="createArNoInput" disabled style="height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px; font-family: inherit; font-size: 13px; outline: none; background: #F3F4F6; box-sizing: border-box; width: 100%;">
+                                </div>
+                                
+                                <!-- Date -->
+                                <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Date <span style="color: #EF4444;">*</span></label>
+                                    <input type="date" id="createArDateInput" style="height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px; font-family: inherit; font-size: 13px; outline: none; box-sizing: border-box; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <!-- Customer Selection Dropdown -->
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Customer <span style="color: #EF4444;">*</span></label>
+                                <div class="custom-dropdown" id="createArCustomerDropdown" data-select="createArCustomerSelect" style="width: 100%;">
+                                    <select id="createArCustomerSelect" style="display:none;">
+                                        <option value="">Select Customer</option>
+                                    </select>
+                                    <div class="custom-dropdown-trigger" style="height: 38px; border-radius: 6px; background-color: white !important; font-size: 14px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); cursor: pointer;">
+                                        <span class="trigger-text placeholder" style="color: var(--text-muted);">Select Customer</span>
+                                        <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: #64748B;"></i>
+                                    </div>
+                                    <div class="custom-dropdown-panel" style="top: calc(100% + 4px); max-height: 200px; overflow-y: auto; z-index: 100;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Pending Bills Table Card -->
+                        <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; min-height: 200px;">
+                            <div style="font-weight: 700; font-size: 14px; color: var(--text-main); border-bottom: 1px solid #E5E7EB; padding: 16px; background: white; margin-bottom: 0;">Pending Bills</div>
+                            
+                            <div style="flex: 1; overflow-y: auto;">
+                                <table class="billing-table" style="margin: 0; border: none; border-radius: 0;">
+                                    <thead>
+                                        <tr style="height: 40px;">
+                                            <th style="width: 70px; text-align: left; padding-left: 16px;">S. No.</th>
+                                            <th style="width: 150px; text-align: left;">Date</th>
+                                            <th style="width: 150px; text-align: left;">INV No</th>
+                                            <th style="text-align: left;">Invoice Amount</th>
+                                            <th style="width: 150px; text-align: left; padding-right: 16px;">Pending</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="createArPendingBillsBody">
+                                        <!-- Filled dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right side (Amount Details) -->
+                    <div style="width: 320px; display: flex; flex-direction: column; gap: 16px; flex-shrink: 0;">
+                        <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+                            <div style="font-weight: 700; font-size: 14px; color: var(--text-main); border-bottom: 1px solid #E5E7EB; padding-bottom: 8px; margin-bottom: 4px;">Amount Details</div>
+                            
+                            <!-- Discount Amount -->
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Discount Amount</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span style="position: absolute; left: 12px; font-size: 13px; color: var(--text-main); font-weight: 500;">₹</span>
+                                    <input type="number" id="createArDiscountInput" value="0.00" style="height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px 0 28px; font-family: inherit; font-size: 13px; outline: none; box-sizing: border-box; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <!-- Pending Amount -->
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Pending Amount</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span style="position: absolute; left: 12px; font-size: 13px; color: var(--text-main); font-weight: 500;">₹</span>
+                                    <input type="text" id="createArPendingInput" readonly style="height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px 0 28px; font-family: inherit; font-size: 13px; outline: none; background: #F3F4F6; box-sizing: border-box; width: 100%; font-weight: 600;">
+                                </div>
+                            </div>
+                            
+                            <!-- Received Amount -->
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Received Amount</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span style="position: absolute; left: 12px; font-size: 13px; color: var(--text-main); font-weight: 500;">₹</span>
+                                    <input type="number" id="createArReceivedInput" value="0.00" style="height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px 0 28px; font-family: inherit; font-size: 13px; outline: none; box-sizing: border-box; width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create AR Footer Actions -->
+            <div id="createArFooter" class="billing-footer" style="display: none; justify-content: space-between; align-items: center;">
+                <div class="footer-left">
+                    <button class="btn-billing-outline" id="createArBackBtn" style="display: flex; align-items: center; gap: 6px; border: 1px solid #000B58; color: #000B58; background: white;">
+                        <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Back
+                    </button>
+                </div>
+                <div class="footer-right" style="display: flex; gap: 8px;">
+                    <button class="btn-billing-outline" id="createArSaveAddBtn" style="border: 1px solid #000B58; color: #000B58; background: white;">Save & Add</button>
+                    <button class="btn-billing-primary" id="createArSaveBtn" style="background: #000B58; border: none; color: white;">Save</button>
+                </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="billing-footer" id="mainBillingFooter">
+                <div class="footer-left">
+                    <button class="btn-billing-outline" id="addItemsBtn">
+                        <i data-lucide="plus-square" style="width: 16px; height: 16px;"></i> Add Items
+                    </button>
+                    <button class="btn-billing-outline" id="clearAllBillBtn">
+                        <i data-lucide="x-square" style="width: 16px; height: 16px;"></i> Clear All
+                    </button>
+                    <button class="btn-billing-outline">
+                        <i data-lucide="pause-circle" style="width: 16px; height: 16px;"></i> Hold Bill
+                    </button>
+                    <button class="btn-billing-outline">
+                        <i data-lucide="x-circle" style="width: 16px; height: 16px;"></i> Sale Return
+                    </button>
+                </div>
+                <div class="footer-right">
+                    <button class="btn-billing-primary" id="saveNewBtn">Save & New</button>
+                    <button class="btn-billing-secondary" id="savePrintBtn">Save & Print</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- QR Scanner Modal -->
+    <div id="billingScannerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 24px; border-radius: 16px; width: 450px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: var(--primary-color); display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <i data-lucide="scan" style="width: 20px; height: 20px;"></i> Scan Item Tag
+                </h3>
+                <button id="closeBillingScannerBtn" style="background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%;">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            
+            <div id="billing-qr-reader" style="width: 100%; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: #f8fafc;"></div>
+            
+            <div style="margin-top: 16px; text-align: center; font-size: 14px; color: var(--text-muted);">
+                Position the item tag QR code within the camera scanner frame.
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Selection Modal -->
+    <div id="customerModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+        <div class="customer-modal-container" style="background: white; border-radius: 12px; width: 1050px; max-width: 95%; height: 650px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); overflow: hidden;">
+            
+            <!-- Modal Body Area -->
+            <div class="customer-modal-body" style="display: flex; flex: 1; overflow: hidden; background: #F8FAFC;">
+                <!-- Left Pane: Customer List & Search -->
+                <div class="customer-modal-left" style="width: 320px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; background: white; padding: 16px; box-sizing: border-box;">
+                    <div class="customer-modal-left-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <span class="customer-modal-title" style="font-weight: 700; font-size: 16px; color: var(--text-main);">Select Customer</span>
+                        <button id="modalNewCustBtn" class="btn-text-primary" style="display: flex; align-items: center; gap: 4px; font-weight: 600; background: none; border: none; cursor: pointer; padding: 0; color: var(--primary-color);">
+                            <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> New
+                        </button>
+                    </div>
+                    <div class="customer-search-wrapper" style="margin-bottom: 16px; position: relative;">
+                        <input type="text" id="modalCustomerSearch" placeholder="Search Customer name/Mobile No." autocomplete="off" style="width: 100%; height: 38px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px; font-family: inherit; font-size: 13px; outline: none; box-sizing: border-box;">
+                    </div>
+                    <div class="customer-list-container" id="modalCustomerList" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px;">
+                        <!-- Customer list cards dynamically rendered here -->
+                    </div>
+                </div>
+
+                <!-- Right Pane: Customer Form Details -->
+                <div class="customer-modal-right" style="flex: 1; padding: 20px; overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Customer Details Form Card -->
+                    <div class="customer-details-form-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; overflow: visible; flex-shrink: 0;">
+                        <div class="form-card-header" style="padding: 12px 16px; font-weight: 600; font-size: 14px; background: #F4F4F5; border-bottom: 1px solid var(--border-color); color: var(--text-main); border-radius: 7px 7px 0 0;">
+                            Customer Details
+                        </div>
+                        <div class="form-card-body" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                            <div class="form-row-two" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Customer Name <span class="required-star" style="color: #EF4444;">*</span></label>
+                                    <input type="text" id="custFormName" placeholder="Enter customer name" class="custom-form-input">
+                                </div>
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Mobile Number <span class="required-star" style="color: #EF4444;">*</span></label>
+                                    <input type="text" id="custFormMobile" placeholder="Enter mobile number" class="custom-form-input" maxlength="10" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);">
+                                </div>
+                            </div>
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Address</label>
+                                <input type="text" id="custFormAddress" placeholder="1st Cross Street, Anna Salai" class="custom-form-input">
+                            </div>
+                            <div class="form-row-two" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Country</label>
+                                    <div class="custom-dropdown" id="custFormCountryDropdown" data-select="custFormCountry" style="width: 100%;">
+                                        <select id="custFormCountry" style="display:none;">
+                                            <option value="India">India</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger">
+                                            <span class="trigger-text">India</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel" style="top: calc(100% + 4px); max-height: 200px; overflow-y: auto; z-index: 100;"></div>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">State</label>
+                                    <div class="custom-dropdown" id="custFormStateDropdown" data-select="custFormState" style="width: 100%;">
+                                        <select id="custFormState" style="display:none;">
+                                            <option value="Tamil Nadu">Tamil Nadu</option>
+                                            <option value="Kerala">Kerala</option>
+                                            <option value="Karnataka">Karnataka</option>
+                                            <option value="Andhra Pradesh">Andhra Pradesh</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger">
+                                            <span class="trigger-text">Tamil Nadu</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel" style="top: calc(100% + 4px); max-height: 200px; overflow-y: auto; z-index: 100;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row-two" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">City</label>
+                                    <input type="text" id="custFormCity" placeholder="Chennai" class="custom-form-input">
+                                </div>
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">Pin Code</label>
+                                    <input type="text" id="custFormPin" placeholder="600028" class="custom-form-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GST & PAN Details Form Card -->
+                    <div class="customer-details-form-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; overflow: visible; flex-shrink: 0;">
+                        <div class="form-card-header" style="padding: 12px 16px; font-weight: 600; font-size: 14px; background: #F4F4F5; border-bottom: 1px solid var(--border-color); color: var(--text-main); display: flex; justify-content: space-between; align-items: center; border-radius: 7px 7px 0 0;">
+                            <span>GST & PAN Details</span>
+                            <label class="switch-toggle" style="position: relative; display: inline-block; width: 44px; height: 22px;">
+                                <input type="checkbox" id="custFormTaxToggle" style="opacity: 0; width: 0; height: 0;">
+                                <span class="slider-round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #CBD5E1; transition: .3s; border-radius: 34px;"></span>
+                            </label>
+                        </div>
+                        <div class="form-card-body" id="taxFieldsContainer" style="padding: 16px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border-color); background: white;">
+                            <div class="form-row-two" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">GSTIN No</label>
+                                    <input type="text" id="custFormGSTIN" placeholder="Enter GSTIN" class="custom-form-input">
+                                </div>
+                                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <label style="font-size: 12px; font-weight: 500; color: var(--text-muted);">PAN Number</label>
+                                    <input type="text" id="custFormPAN" placeholder="Enter PAN number" class="custom-form-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="customer-modal-footer" style="padding: 16px 24px; background: white; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box;">
+                <button id="modalCustBackBtn" class="btn-customer-back" style="display: flex; align-items: center; gap: 6px; background: white; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 16px; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text-main); cursor: pointer; transition: all 0.2s;">
+                    <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i> Back
+                </button>
+                <button id="modalCustSaveBtn" class="btn-customer-save" style="background: #000B58; border: none; border-radius: 6px; padding: 8px 24px; font-family: inherit; font-size: 14px; font-weight: 500; color: white; cursor: pointer; transition: all 0.2s;">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Date Picker Popup -->
+    <div id="globalDateFilterPopup" class="date-picker-popup" style="display: none; position: absolute; background: white; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid var(--border-color); width: 280px; padding: 12px; z-index: 2000; box-sizing: border-box;">
+        <!-- Tabs -->
+        <div class="date-picker-tabs" style="display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap;">
+            <button class="date-tab-btn active" data-tab="day" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #E2E8F0; background: #000B58; color: white; font-size: 13px; font-weight: 500; cursor: pointer;">
+                <i data-lucide="check-circle-2" style="width: 14px; height: 14px; color: #22c55e;"></i> Day
+            </button>
+            <button class="date-tab-btn" data-tab="week" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #E2E8F0; background: #F8FAFC; color: var(--text-main); font-size: 13px; font-weight: 500; cursor: pointer;">
+                <i data-lucide="check-circle-2" style="width: 14px; height: 14px; color: #CBD5E1;"></i> Week
+            </button>
+            <button class="date-tab-btn" data-tab="month" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #E2E8F0; background: #F8FAFC; color: var(--text-main); font-size: 13px; font-weight: 500; cursor: pointer;">
+                <i data-lucide="check-circle-2" style="width: 14px; height: 14px; color: #CBD5E1;"></i> Month
+            </button>
+            <button class="date-tab-btn" data-tab="year" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #E2E8F0; background: #F8FAFC; color: var(--text-main); font-size: 13px; font-weight: 500; cursor: pointer;">
+                <i data-lucide="check-circle-2" style="width: 14px; height: 14px; color: #CBD5E1;"></i> Year
+            </button>
+            <button class="date-tab-btn" data-tab="custom" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #E2E8F0; background: #F8FAFC; color: var(--text-main); font-size: 13px; font-weight: 500; cursor: pointer;">
+                <i data-lucide="check-circle-2" style="width: 14px; height: 14px; color: #CBD5E1;"></i> Custom
+            </button>
+        </div>
+
+        <!-- Dynamic Content Area -->
+        <div id="datePickerContent" style="min-height: 200px;">
+            <!-- Content will be injected by JS -->
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="js/script.js"></script>
+    <script src="js/date-filter.js"></script>
+    <script src="js/sales.js"></script>
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - View Vendor</title>
+    <link rel="stylesheet" href="css/style.css?v=6">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .view-item-container {
+            display: flex;
+            gap: 16px;
+            padding: 16px 16px 0px 16px;
+            height: calc(100vh - 140px);
+            overflow: hidden;
+        }
+
+        .products-sidebar-left {
+            width: 260px;
+            min-width: 200px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 1;
+            overflow: hidden;
+        }
+
+        .sidebar-search-sticky {
+            padding: 12px 12px 0px 12px;
+            background-color: var(--card-bg);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .sidebar-search-sticky input {
+            width: 100%;
+            height: 38px;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: #F8F9FA;
+            outline: none;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        .sidebar-products-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .sidebar-vendor-card {
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .sidebar-vendor-card.active {
+            border-color: #000B58;
+            background-color: #F0F4FF;
+        }
+
+        .sidebar-vendor-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .sidebar-vendor-amount {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        .sidebar-vendor-amount.red-amount {
+            color: #EF4444;
+        }
+
+        .details-viewer-right {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 4px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .vendor-tabs {
+            display: flex;
+            gap: 24px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 16px;
+        }
+
+        .vendor-tab {
+            padding: 8px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .vendor-tab.active {
+            color: #000B58;
+            border-bottom-color: #000B58;
+        }
+
+        .create-card {
+            margin-bottom: 16px;
+        }
+
+        .view-card-field-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-bottom: 16px;
+        }
+
+        .view-card-field-row.two-col {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .view-card-field-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .view-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .view-field-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .view-field-value {
+            font-size: 14px;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .icon-btn-danger {
+            background-color: #FEE2E2;
+            border: 1px solid #FCA5A5;
+            color: #EF4444;
+            width: 35px;
+            height: 35px;
+            padding: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .icon-btn-danger:hover {
+            background-color: #EF4444;
+            color: white;
+        }
+
+        .icon-btn-outline {
+            background-color: white;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            width: 35px;
+            height: 35px;
+            padding: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .icon-btn-outline:hover {
+            background-color: #F8F9FA;
+            border-color: #CBD5E1;
+        }
+
+        @media (max-width: 768px) {
+            .view-item-container {
+                flex-direction: column;
+                height: auto;
+                overflow: visible;
+            }
+            .products-sidebar-left {
+                width: 100%;
+                height: 200px;
+            }
+            .view-card-field-row, .view-card-field-row.two-col {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item active">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Page Header -->
+            <div class="page-header" style="height: 45px; padding: 0 16px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <a href="vendor.html" style="color: #000B58; display: flex; align-items: center; justify-content: center; text-decoration: none;">
+                        <i data-lucide="arrow-left" style="width: 20px; height: 20px; stroke-width: 2.5;"></i>
+                    </a>
+                    <h1 class="page-title" id="pageTitleName" style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-main);">...</h1>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button class="icon-btn-danger" id="deleteVendorBtn">
+                        <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
+                    </button>
+                    <button class="icon-btn-outline" id="editVendorBtn">
+                        <i data-lucide="edit-3" style="width: 20px; height: 20px;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- View Layout -->
+            <div class="view-item-container">
+                <!-- Left Sidebar Vendor List (Sticky) -->
+                <div class="products-sidebar-left">
+                    <div class="sidebar-search-sticky">
+                        <input type="text" id="sidebarSearch" placeholder="Search Vendor">
+                    </div>
+                    <div class="sidebar-products-list" id="sidebarVendorsList">
+                        <!-- Vendors listed dynamically here -->
+                    </div>
+                </div>
+
+                <!-- Right Side Vendor Detailed View -->
+                <div class="details-viewer-right">
+                    
+                    <!-- Tabs -->
+                    <div class="vendor-tabs">
+                        <div class="vendor-tab active">Vendor Details</div>
+                        <div class="vendor-tab">Transaction List</div>
+                        <div class="vendor-tab">Statements</div>
+                    </div>
+
+                    <div id="vendorDetailsContent">
+                        <!-- Basic Details -->
+                        <div class="create-card">
+                            <div class="create-card-title">Basic Details</div>
+                            <div class="create-card-body">
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Company Name</span>
+                                        <span class="view-field-value" id="viewCompanyName">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Display Name</span>
+                                        <span class="view-field-value" id="viewDisplayName">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Contact Person</span>
+                                        <span class="view-field-value" id="viewContactPerson">-</span>
+                                    </div>
+                                </div>
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Contact Number</span>
+                                        <span class="view-field-value" id="viewContactNumber">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Email ID</span>
+                                        <span class="view-field-value" id="viewEmailId">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">GSTIN</span>
+                                        <span class="view-field-value" id="viewGstin">-</span>
+                                    </div>
+                                </div>
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">PAN Number</span>
+                                        <span class="view-field-value" id="viewPanNumber">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Address Details -->
+                        <div class="create-card">
+                            <div class="create-card-title">Address Details</div>
+                            <div class="create-card-body">
+                                <div class="view-card-field-row two-col">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Billing Address</span>
+                                        <div class="view-field-value" id="viewBillingAddress" style="white-space: pre-line; line-height: 1.5; margin-top: 4px;">-</div>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Shipping Address</span>
+                                        <div class="view-field-value" id="viewShippingAddress" style="white-space: pre-line; line-height: 1.5; margin-top: 4px;">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Account Details -->
+                        <div class="create-card">
+                            <div class="create-card-title">Account Details</div>
+                            <div class="create-card-body">
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Account Holder Name</span>
+                                        <span class="view-field-value" id="viewAccHolderName">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Account Number</span>
+                                        <span class="view-field-value" id="viewAccNumber">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">IFSC Code</span>
+                                        <span class="view-field-value" id="viewIfscCode">-</span>
+                                    </div>
+                                </div>
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Bank Name</span>
+                                        <span class="view-field-value" id="viewBankName">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Branch Name</span>
+                                        <span class="view-field-value" id="viewBranchName">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Additional Details -->
+                        <div class="create-card">
+                            <div class="create-card-title">Additional Details</div>
+                            <div class="create-card-body">
+                                <div class="view-card-field-row">
+                                    <div class="view-field">
+                                        <span class="view-field-label">Opening Balance</span>
+                                        <span class="view-field-value" id="viewOpeningBalance">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Balance Type</span>
+                                        <span class="view-field-value" id="viewBalanceType">-</span>
+                                    </div>
+                                    <div class="view-field">
+                                        <span class="view-field-label">Payment Terms</span>
+                                        <span class="view-field-value" id="viewPaymentTerms">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Bottom Action Footer -->
+            <div class="sticky-action-bar-new" style="justify-content: flex-start;">
+                <a href="vendor.html" class="btn-footer-outline" style="text-decoration: none;">
+                    <i data-lucide="chevron-left" style="width: 16px; height: 16px; margin-right: 4px; stroke-width: 2.5;"></i> Back
+                </a>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <h3 class="modal-title">Delete Vendor</h3>
+            <p class="modal-message">Are you sure you want to delete the vendor?</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" id="cancelDeleteBtn">No</button>
+                <button class="btn btn-primary" id="confirmDeleteBtn" style="background-color: #EF4444;">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script src="js/view-vendor.js"></script>
+</body>
+</html>

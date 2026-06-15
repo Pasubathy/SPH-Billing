@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Create Vendor</title>
+    <link rel="stylesheet" href="css/style.css?v=6">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .form-row-three {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 1024px) {
+            .form-row-three {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 768px) {
+            .form-row-three, .address-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .address-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        .address-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        .header-with-action {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #F4F4F5;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-main);
+            border-radius: 7px 7px 0 0;
+        }
+        .btn-add-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: #000B58;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 0;
+            font-family: inherit;
+        }
+        textarea.custom-form-input {
+            resize: none;
+            height: 80px;
+            padding-top: 10px;
+        }
+        .create-card-title {
+            background-color: #F4F4F5;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-main);
+            margin: 0;
+            border-radius: 7px 7px 0 0;
+        }
+        .create-card-body {
+            padding: 16px;
+        }
+        .create-card {
+            padding: 0;
+        }
+    </style>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item active">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content" style="display: flex; flex-direction: column; overflow: hidden; background-color: #F8FAFC;">
+            <!-- Page Header -->
+            <div class="page-header" style="height: 45px; padding: 0px 24px 16px 24px; display: flex; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                <h1 class="page-title" style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-main);">Create Vendor</h1>
+            </div>
+
+            <!-- Scrollable Content Grid -->
+            <div style="flex: 1; overflow-y: auto; padding: 16px 24px;">
+                <div style="max-width: 1200px; display: flex; flex-direction: column; gap: 16px;">
+                    
+                    <!-- Basic Details -->
+                    <div class="create-card">
+                        <div class="create-card-title">Basic Details</div>
+                        <div class="create-card-body">
+                            <div class="form-row-three">
+                                <div class="form-group">
+                                    <label>Vendor Name <span class="required-asterisk" style="color: #EF4444;">*</span></label>
+                                    <input type="text" id="vendorName" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label style="margin: 0;">Display Name <span class="required-asterisk" style="color: #EF4444;">*</span></label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="companyNameCheck"> Company Name
+                                        </label>
+                                    </div>
+                                    <input type="text" id="displayName" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Contact Person</label>
+                                    <input type="text" id="contactPerson" class="custom-form-input">
+                                </div>
+                            </div>
+                            <div class="form-row-three">
+                                <div class="form-group">
+                                    <label>Contact Number</label>
+                                    <input type="text" id="contactNumber" class="custom-form-input" maxlength="10" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email ID</label>
+                                    <input type="email" id="emailId" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>GSTIN</label>
+                                    <input type="text" id="gstin" class="custom-form-input" style="text-transform: uppercase;">
+                                </div>
+                            </div>
+                            <div class="form-row-three" style="margin-bottom: 0;">
+                                <div class="form-group">
+                                    <label>PAN Number</label>
+                                    <input type="text" id="panNumber" class="custom-form-input" style="text-transform: uppercase;" maxlength="10">
+                                </div>
+                                <div class="form-group"></div>
+                                <div class="form-group"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Address Details -->
+                    <div class="create-card">
+                        <div class="create-card-title">Address Details</div>
+                        <div class="create-card-body">
+                            <div class="address-grid">
+                                <!-- Billing Column -->
+                                <div class="address-col">
+                                    <div class="form-group">
+                                        <label>Billing Address</label>
+                                        <textarea id="billingAddress" class="custom-form-input"></textarea>
+                                    </div>
+                                    <div class="form-row-two" style="display: flex; gap: 16px;">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>Country</label>
+                                            <div class="custom-dropdown" id="billCountryDropdown" data-select="billCountry">
+                                                <select id="billCountry" style="display:none;">
+                                                    <option value="India">India</option>
+                                                </select>
+                                                <div class="custom-dropdown-trigger">
+                                                    <span class="trigger-text">India</span>
+                                                    <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </div>
+                                                <div class="custom-dropdown-panel"></div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>State</label>
+                                            <div class="custom-dropdown" id="billStateDropdown" data-select="billState">
+                                                <select id="billState" style="display:none;">
+                                                    <option value="">Select State</option>
+                                                    <option value="Tamil Nadu">Tamil Nadu</option>
+                                                    <option value="Kerala">Kerala</option>
+                                                    <option value="Karnataka">Karnataka</option>
+                                                </select>
+                                                <div class="custom-dropdown-trigger">
+                                                    <span class="trigger-text placeholder">Select State</span>
+                                                    <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </div>
+                                                <div class="custom-dropdown-panel"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-row-two" style="display: flex; gap: 16px;">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>City</label>
+                                            <input type="text" id="billCity" class="custom-form-input">
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>Pin Code</label>
+                                            <input type="text" id="billPinCode" class="custom-form-input" maxlength="6" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Shipping Column -->
+                                <div class="address-col">
+                                    <div class="form-group">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <label style="margin: 0;">Shipping Address</label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="copyBillingCheck"> Billing Address
+                                            </label>
+                                        </div>
+                                        <textarea id="shipAddress" class="custom-form-input"></textarea>
+                                    </div>
+                                    <div class="form-row-two" style="display: flex; gap: 16px;">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>Country</label>
+                                            <div class="custom-dropdown" id="shipCountryDropdown" data-select="shipCountry">
+                                                <select id="shipCountry" style="display:none;">
+                                                    <option value="India">India</option>
+                                                </select>
+                                                <div class="custom-dropdown-trigger">
+                                                    <span class="trigger-text">India</span>
+                                                    <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </div>
+                                                <div class="custom-dropdown-panel"></div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>State</label>
+                                            <div class="custom-dropdown" id="shipStateDropdown" data-select="shipState">
+                                                <select id="shipState" style="display:none;">
+                                                    <option value="">Select State</option>
+                                                    <option value="Tamil Nadu">Tamil Nadu</option>
+                                                    <option value="Kerala">Kerala</option>
+                                                    <option value="Karnataka">Karnataka</option>
+                                                </select>
+                                                <div class="custom-dropdown-trigger">
+                                                    <span class="trigger-text placeholder">Select State</span>
+                                                    <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </div>
+                                                <div class="custom-dropdown-panel"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-row-two" style="display: flex; gap: 16px;">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>City</label>
+                                            <input type="text" id="shipCity" class="custom-form-input">
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>Pin Code</label>
+                                            <input type="text" id="shipPinCode" class="custom-form-input" maxlength="6" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Details -->
+                    <div class="create-card">
+                        <div class="header-with-action">
+                            <span>Account Details</span>
+                            <button type="button" class="btn-add-row"><i data-lucide="plus-square" style="width: 14px; height: 14px;"></i> Add Row</button>
+                        </div>
+                        <div class="create-card-body">
+                            <div class="form-row-three">
+                                <div class="form-group">
+                                    <label>Account Holder Name</label>
+                                    <input type="text" id="accHolderName" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Account Number</label>
+                                    <input type="text" id="accNumber" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>IFSC Code</label>
+                                    <input type="text" id="ifscCode" class="custom-form-input" style="text-transform: uppercase;">
+                                </div>
+                            </div>
+                            <div class="form-row-three" style="margin-bottom: 0;">
+                                <div class="form-group">
+                                    <label>Bank Name</label>
+                                    <input type="text" id="bankName" class="custom-form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Branch Name</label>
+                                    <input type="text" id="branchName" class="custom-form-input">
+                                </div>
+                                <div class="form-group"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Details -->
+                    <div class="create-card">
+                        <div class="header-with-action">
+                            <span>Additional Details</span>
+                            <button type="button" class="btn-add-row"><i data-lucide="plus-square" style="width: 14px; height: 14px;"></i> Add Row</button>
+                        </div>
+                        <div class="create-card-body">
+                            <div class="form-row-three" style="margin-bottom: 0;">
+                                <div class="form-group">
+                                    <label>Opening Balance</label>
+                                    <input type="number" id="openingBalance" class="custom-form-input" placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Balance Type</label>
+                                    <div class="custom-dropdown" id="balanceTypeDropdown" data-select="balanceType">
+                                        <select id="balanceType" style="display:none;">
+                                            <option value="">Select Balance Type</option>
+                                            <option value="To Collect">To Collect</option>
+                                            <option value="To Pay">To Pay</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger">
+                                            <span class="trigger-text placeholder">Select Balance Type</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel"></div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Payment Terms</label>
+                                    <div class="custom-dropdown" id="paymentTermsDropdown" data-select="paymentTerms">
+                                        <select id="paymentTerms" style="display:none;">
+                                            <option value="None">None</option>
+                                            <option value="10 days">10 days</option>
+                                            <option value="30 days">30 days</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger">
+                                            <span class="trigger-text">None</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Sticky Action Bar / Footer -->
+            <div class="sticky-action-bar-new">
+                <div class="footer-left">
+                    <a href="vendor.html" class="btn-footer-outline" style="text-decoration: none;">
+                        <i data-lucide="chevron-left" style="width: 16px; height: 16px; margin-right: 4px; stroke-width: 2.5;"></i> Back
+                    </a>
+                </div>
+                <div class="footer-right">
+                    <button type="button" class="btn-footer-outline" id="saveAddVendorBtn">Save & Add</button>
+                    <button type="button" class="btn-footer-solid" id="saveVendorBtn">Save</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script src="js/vendor.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+
+            // Initialize generic dropdowns
+            initGenericDropdown('billCountryDropdown');
+            initGenericDropdown('billStateDropdown');
+            initGenericDropdown('shipCountryDropdown');
+            initGenericDropdown('shipStateDropdown');
+            initGenericDropdown('balanceTypeDropdown');
+            initGenericDropdown('paymentTermsDropdown');
+
+            // Copy Company Name to Display Name
+            const companyNameCheck = document.getElementById('companyNameCheck');
+            const vendorNameInput = document.getElementById('vendorName');
+            const displayNameInput = document.getElementById('displayName');
+            
+            if (companyNameCheck) {
+                companyNameCheck.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        displayNameInput.value = vendorNameInput.value;
+                    }
+                });
+                vendorNameInput.addEventListener('input', () => {
+                    if (companyNameCheck.checked) {
+                        displayNameInput.value = vendorNameInput.value;
+                    }
+                });
+            }
+
+            // Copy Billing Address to Shipping Address
+            const copyBillingCheck = document.getElementById('copyBillingCheck');
+            if (copyBillingCheck) {
+                copyBillingCheck.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        document.getElementById('shipAddress').value = document.getElementById('billingAddress').value;
+                        document.getElementById('shipCity').value = document.getElementById('billCity').value;
+                        document.getElementById('shipPinCode').value = document.getElementById('billPinCode').value;
+
+                        // Sync dropdowns
+                        syncDropdown('billCountryDropdown', 'shipCountryDropdown');
+                        syncDropdown('billStateDropdown', 'shipStateDropdown');
+                    }
+                });
+            }
+
+            function syncDropdown(sourceId, targetId) {
+                const sourceSelect = document.querySelector(`#${sourceId} select`);
+                const targetSelect = document.querySelector(`#${targetId} select`);
+                if (sourceSelect && targetSelect) {
+                    targetSelect.value = sourceSelect.value;
+                    const triggerText = document.querySelector(`#${targetId} .trigger-text`);
+                    const opt = Array.from(targetSelect.options).find(o => o.value === targetSelect.value);
+                    if (triggerText && opt) {
+                        triggerText.textContent = opt.textContent;
+                        triggerText.style.color = targetSelect.value ? 'var(--text-main)' : 'var(--text-muted)';
+                    }
+                }
+            }
+        });
+
+        // Dropdown initialization function copied from standard structure
+        function initGenericDropdown(dropdownId) {
+            const dropdown = document.getElementById(dropdownId);
+            if (!dropdown) return;
+
+            const select = dropdown.querySelector('select');
+            const trigger = dropdown.querySelector('.custom-dropdown-trigger');
+            const triggerText = trigger.querySelector('.trigger-text');
+            const panel = dropdown.querySelector('.custom-dropdown-panel');
+
+            if (!select || !trigger || !triggerText || !panel) return;
+
+            // Populate panel
+            panel.innerHTML = '';
+            const options = Array.from(select.options);
+
+            options.forEach((opt, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'custom-dropdown-option';
+                optionDiv.textContent = opt.textContent;
+                optionDiv.dataset.value = opt.value;
+                optionDiv.style.fontSize = '13px';
+                
+                if (select.value === opt.value) {
+                    optionDiv.classList.add('selected');
+                    if (opt.value) {
+                        triggerText.textContent = opt.textContent;
+                        triggerText.classList.remove('placeholder');
+                    }
+                }
+
+                optionDiv.addEventListener('click', () => {
+                    select.value = opt.value;
+                    triggerText.textContent = opt.textContent;
+                    
+                    if (opt.value) {
+                        triggerText.classList.remove('placeholder');
+                        triggerText.style.color = 'var(--text-main)';
+                    } else {
+                        triggerText.classList.add('placeholder');
+                        triggerText.style.color = 'var(--text-muted)';
+                    }
+
+                    panel.querySelectorAll('.custom-dropdown-option').forEach(el => el.classList.remove('selected'));
+                    optionDiv.classList.add('selected');
+                    dropdown.classList.remove('open');
+
+                    // Dispatch change event on select
+                    select.dispatchEvent(new Event('change'));
+                });
+
+                panel.appendChild(optionDiv);
+            });
+
+            // Toggle dropdown
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = dropdown.classList.contains('open');
+                document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+                if (!isOpen) {
+                    dropdown.classList.add('open');
+                }
+            });
+            
+            // Close on outside click
+            if (!window.dropdownListenerAdded) {
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.custom-dropdown')) {
+                        document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+                    }
+                });
+                window.dropdownListenerAdded = true;
+            }
+        }
+    </script>
+</body>
+</html>

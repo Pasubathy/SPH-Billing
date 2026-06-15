@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Vendor</title>
+    <link rel="stylesheet" href="css/style.css?v=4">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .vendor-stat-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 0;
+            padding: 16px;
+        }
+        .vendor-stat-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+        }
+        .vendor-stat-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+            align-self: flex-start;
+        }
+        .vendor-stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-main);
+            align-self: flex-end;
+        }
+        .value-red {
+            color: #EF4444;
+        }
+        .vendor-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            margin-bottom: 16px;
+        }
+        .vendor-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-right: 24px;
+        }
+        .vendor-table-container {
+            margin: 0 16px 16px 16px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .vendor-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .vendor-table th {
+            background-color: #F8FAFC;
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+        }
+        .vendor-table th:last-child {
+            border-right: none;
+        }
+        .vendor-table td {
+            padding: 10px 12px;
+            font-size: 13px;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+        .vendor-table td:last-child {
+            border-right: none;
+        }
+        .vendor-link {
+            color: #2563EB;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .vendor-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item active">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content" style="display: flex; flex-direction: column; overflow-y: auto; background-color: #F8FAFC;">
+            <!-- Tabs -->
+            <div class="page-tabs" style="padding: 0 24px 0 0; border-bottom: 1px solid var(--border-color); background-color: white;">
+                <a href="vendor.html" class="tab active">Vendor</a>
+                <a href="purchase-invoice.html" class="tab">Purchase Invoice</a>
+                <a href="#" class="tab">Purchase Return</a>
+                <a href="#" class="tab">Payment</a>
+            </div>
+
+            <!-- Score Cards -->
+            <div class="vendor-stat-cards">
+                <div class="vendor-stat-card" style="background: white; border: 1.5px solid #000B58; border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <span class="vendor-stat-label" style="font-size: 13px; font-weight: 500; color: var(--text-muted); align-self: flex-start;">Total Vendor</span>
+                    <span class="vendor-stat-value" style="font-size: 20px; font-weight: 700; color: #000B58; align-self: flex-end; text-align: right;">0</span>
+                </div>
+                <div class="vendor-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <span class="vendor-stat-label" style="font-size: 13px; font-weight: 500; color: var(--text-muted); align-self: flex-start;">Purchase Amount</span>
+                    <span class="vendor-stat-value" style="font-size: 20px; font-weight: 700; color: #22C55E; align-self: flex-end; text-align: right;">₹0.00</span>
+                </div>
+                <div class="vendor-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <span class="vendor-stat-label" style="font-size: 13px; font-weight: 500; color: var(--text-muted); align-self: flex-start;">Pending to Pay</span>
+                    <span class="vendor-stat-value value-red" style="font-size: 20px; font-weight: 700; color: #EF4444; align-self: flex-end; text-align: right;">₹0.00</span>
+                </div>
+            </div>
+
+            <!-- Controls (Search, Export, Create) -->
+            <div class="vendor-controls">
+                <div style="display: flex; align-items: center;">
+                    <h2 class="vendor-title">Vendor</h2>
+                    
+                    <!-- Search Bar -->
+                    <div style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; background: white; height: 38px; width: 260px; padding: 0 12px; box-sizing: border-box; margin-right: 8px;">
+                        <input type="text" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 14px; width: 100%;">
+                        <i data-lucide="search" style="width: 16px; height: 16px; color: var(--text-muted); margin-left: 8px;"></i>
+                    </div>
+
+                    <!-- Clear Button -->
+                    <button style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 38px; width: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
+                        <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                    </button>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <!-- Export Dropdown -->
+                    <div class="select-wrapper-custom" style="width: 110px; height: 38px;">
+                        <select style="background-color: white !important; font-size: 14px; border-radius: 6px; height: 100%; padding-right: 28px; width: 100%; border: 1px solid var(--border-color); appearance: none; padding-left: 12px;">
+                            <option value="">Export</option>
+                        </select>
+                        <i data-lucide="chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted); pointer-events: none;"></i>
+                    </div>
+
+                    <!-- Create Button -->
+                    <a href="create-vendor.html" style="text-decoration: none; height: 38px; padding: 0 20px; border: none; border-radius: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; background: #000B58; cursor: pointer; color: white; font-weight: 600; box-sizing: border-box; font-family: inherit;">
+                        <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                        <span>Create</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="vendor-table-container">
+                <table class="vendor-table">
+                    <thead>
+                        <tr style="height: 40px;">
+                            <th style="width: 80px;">S. No.</th>
+                            <th style="width: 25%;">Vendor Name</th>
+                            <th style="width: 20%;">Contact Person</th>
+                            <th style="width: 20%;">Contact Number</th>
+                            <th style="width: 15%;">Purchase Amount</th>
+                            <th style="width: 15%;">Pending to Pay</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Empty State -->
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 32px; color: var(--text-muted);">
+                                No vendors available.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script src="js/vendor.js?v=1"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        });
+    </script>
+</body>
+</html>

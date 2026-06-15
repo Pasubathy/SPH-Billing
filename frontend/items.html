@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Items</title>
+    <link rel="stylesheet" href="css/style.css?v=3">
+    <link rel="stylesheet" href="css/items-grid.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item active">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Tabs & Actions -->
+            <div class="page-tabs" style="display: flex; justify-content: space-between; align-items: center; padding-right: 16px; background-color: #F8F9FA; height: 45px; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; height: 100%;">
+                    <a href="items.html" class="tab active">Items</a>
+                    <a href="category.html" class="tab">Category</a>
+                    <a href="units.html" class="tab">Units</a>
+                </div>
+                <button class="btn" id="scanTagBtn" style="border: 1px solid #7C3AED; background-color: #EEF2FF; color: #4338CA; border-radius: 8px; padding: 4px 16px; height: 32px; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.2s;">
+                    <i data-lucide="scan" style="width: 16px; height: 16px; color: #4338CA;"></i> Scan Tag
+                </button>
+            </div>
+
+            <div class="summary-card" style="margin: 0; padding: 16px; display: flex; flex-direction: column; border-top: none; border-left: none; border-right: none; border-radius: 0; flex: 1; min-height: 0;">
+                <!-- Page Header -->
+                <div class="page-header" style="padding: 0 0 16px 0; border-bottom: none;">
+                    <div class="page-title-group" style="gap: 16px;">
+                        <h1 class="page-title" style="margin-right: 8px;">Items List</h1>
+                        <div class="custom-dropdown" id="categoryFilterDropdown" data-select="categoryFilter" style="min-width: 140px; height: 35px; position: relative;">
+                            <select id="categoryFilter" style="display:none;">
+                                <option value="">Category</option>
+                            </select>
+                            <div class="custom-dropdown-trigger" style="height: 100%; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: white; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 14px; font-weight: 500;">
+                                <span class="trigger-text placeholder">Category</span>
+                                <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="custom-dropdown-panel" style="min-width: 160px; right: 0;"></div>
+                        </div>
+                        <div class="search-box">
+                            <input type="text" id="itemSearch" placeholder="Search">
+                            <i data-lucide="search" class="search-icon"></i>
+                        </div>
+                        <button class="btn btn-outline" id="clearFilterBtn" style="padding: 8px; display: flex; align-items: center; justify-content: center; height: 35px;" title="Clear Filter">
+                            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-outline" id="toggleViewBtn" style="padding: 8px; display: flex; align-items: center; justify-content: center;" title="Toggle View">
+                            <i data-lucide="list" style="width: 18px; height: 18px;"></i>
+                        </button>
+                        <button class="btn btn-outline" style="display: flex; align-items: center; gap: 8px;">
+                            Export <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <a href="create-item.html" class="btn btn-primary" id="createItemBtn" style="background-color: var(--primary-color); display: flex; align-items: center; gap: 8px; text-decoration: none; color: white;">
+                            <i data-lucide="plus" class="btn-icon"></i> Create
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Items Content Area -->
+                <div class="units-content-wrapper" id="itemsListContainer" style="display: none;">
+                    <div class="units-table">
+                        <div class="units-header-row unified-row">
+                            <div class="col-item-sno">S. No.</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-code">Code</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-name">Item Name</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-category">Category</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-stock">Stock</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-unit">Base Unit</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-pprice">Purchase Price</div>
+                            <div class="vertical-divider"></div>
+                            <div class="col-item-sprice">Selling Price</div>
+                        </div>
+                        
+                        <div class="units-body" id="itemsList">
+                            <!-- Dynamic item rows will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="items-grid" id="itemsGridContainer">
+                    <!-- Dynamic grid cards will be rendered here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- QR Scanner Modal -->
+    <div id="scannerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 24px; border-radius: 16px; width: 450px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: var(--primary-color); display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <i data-lucide="scan" style="width: 20px; height: 20px;"></i> Scan Item Tag
+                </h3>
+                <button id="closeScannerBtn" style="background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%;">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            
+            <div id="qr-reader" style="width: 100%; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: #f8fafc;"></div>
+            
+            <div style="margin-top: 16px; text-align: center; font-size: 14px; color: var(--text-muted);">
+                Position the item tag QR code within the camera scanner frame.
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="js/script.js"></script>
+    <script src="js/items.js"></script>
+</body>
+</html>

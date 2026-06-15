@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - Create Item</title>
+    <link rel="stylesheet" href="css/style.css?v=6">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- QR Code Generator Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        .btn-print-tag-new {
+            width: 100%;
+            height: 35px;
+            margin-top: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: white;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--primary-color);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .btn-print-tag-new:hover:not(:disabled) {
+            background-color: #F8F9FA;
+            border-color: #CBD5E1;
+        }
+
+        .btn-print-tag-new:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .print-tag-icon-new {
+            width: 20px;
+            height: 20px;
+            stroke-width: 2.2;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item active">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Page Header (Create Item Title only, as in reference image) -->
+            <div class="page-header" style="height: 45px; padding: 0px 24px 16px 24px; display: flex; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color);">
+                <h1 class="page-title" style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-main);">Create Item</h1>
+            </div>
+
+            <!-- Create Item Layout Grid -->
+            <div class="create-item-grid" style="padding: 16px;">
+                <!-- Left Form Column -->
+                <div class="create-form-column">
+                    
+                    <!-- Basic Details -->
+                    <div class="create-card">
+                        <div class="create-card-title">Basic Details</div>
+                        <div class="form-row-two">
+                            <div class="form-group">
+                                <label>Code <span class="required-asterisk">*</span></label>
+                                <div class="input-addon-group">
+                                    <input type="text" id="itemCode" placeholder="Enter Item Code" maxlength="5" readonly style="cursor: not-allowed; background-color: #F8F9FA;">
+                                    <button type="button" class="input-addon-btn-inline" id="generateCodeBtn">Generate</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Category <span class="required-asterisk">*</span></label>
+                                <div class="custom-dropdown" id="categoryDropdown" data-select="itemCategory">
+                                    <select id="itemCategory" style="display:none;">
+                                        <option value="">Select Category</option>
+                                    </select>
+                                    <div class="custom-dropdown-trigger">
+                                        <span class="trigger-text placeholder">Select Category</span>
+                                        <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                    <div class="custom-dropdown-panel"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row-two">
+                            <div class="form-group">
+                                <label>Item Name <span class="required-asterisk">*</span></label>
+                                <input type="text" id="itemName" placeholder="Enter Item Name" class="custom-form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>HSN Code</label>
+                                <input type="text" id="itemHSN" placeholder="Enter HSN Code" class="custom-form-input">
+                            </div>
+                        </div>
+                        <div class="form-row-two" style="margin-bottom: 0;">
+                            <div class="form-group">
+                                <label>GST Rate</label>
+                                <div class="custom-dropdown" id="gstRateDropdown" data-select="itemGSTRate">
+                                    <select id="itemGSTRate" style="display:none;">
+                                        <option value="none">None</option>
+                                        <option value="5">GST 5%</option>
+                                        <option value="12">GST 12%</option>
+                                        <option value="18">GST 18%</option>
+                                        <option value="28">GST 28%</option>
+                                        <option value="i5">IGST 5%</option>
+                                        <option value="i12">IGST 12%</option>
+                                        <option value="i18">IGST 18%</option>
+                                        <option value="i28">IGST 28%</option>
+                                    </select>
+                                    <div class="custom-dropdown-trigger">
+                                        <span class="trigger-text">None</span>
+                                        <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                    <div class="custom-dropdown-panel"></div>
+                                </div>
+                            </div>
+                            <div class="form-group"></div> <!-- Empty block to align grid -->
+                        </div>
+                    </div>
+
+                    <!-- Purchase Details -->
+                    <div class="create-card">
+                        <div class="create-card-title">Purchase Details</div>
+                        <div class="form-row-two">
+                            <div class="form-group">
+                                <label>Purchase/Base Unit <span class="required-asterisk">*</span></label>
+                                <div class="custom-dropdown" id="purchaseUnitDropdown" data-select="purchaseUnit">
+                                    <select id="purchaseUnit" style="display:none;">
+                                        <option value="">Select Unit</option>
+                                    </select>
+                                    <div class="custom-dropdown-trigger">
+                                        <span class="trigger-text placeholder">Select Unit</span>
+                                        <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                    <div class="custom-dropdown-panel"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Purchase Amount <span class="required-asterisk">*</span></label>
+                                <div class="input-addon-group">
+                                    <span class="input-prefix-icon">₹</span>
+                                    <input type="number" id="purchaseAmount" placeholder="0.00" min="0" step="0.01">
+                                    <div class="custom-dropdown" id="purchaseTaxDropdown" data-select="purchaseTaxType" style="width: auto; height: 100%; border-left: 1px solid var(--border-color);">
+                                        <select id="purchaseTaxType" style="display:none;">
+                                            <option value="without">without tax</option>
+                                            <option value="with">with tax</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger" style="border:none; background-color: #F4F4F5; height:100%; min-width: 115px; padding: 0 12px; border-radius: 0 6px 6px 0;">
+                                            <span class="trigger-text">without tax</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel" style="min-width: 120px; right: 0; left: auto;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row-two" style="margin-bottom: 0;">
+                            <div class="form-group">
+                                <label>Stock</label>
+                                <input type="number" id="itemStock" placeholder="Enter stock count" step="any" min="0" class="custom-form-input">
+                            </div>
+                            <div class="form-group"></div> <!-- Empty block to align grid -->
+                        </div>
+                    </div>
+
+                    <!-- Selling Price Details -->
+                    <div class="create-card">
+                        <div class="create-card-title">
+                            <span>Selling Price</span>
+                            <button type="button" class="btn-add-row-header" id="addConversionRowBtn">
+                                <i data-lucide="plus" style="width: 16px; height: 16px; stroke-width: 2.5;"></i> Add Row
+                            </button>
+                        </div>
+                        <div class="form-row-two" style="margin-bottom: 12px;">
+                            <div class="form-group">
+                                <label>Margin</label>
+                                <div class="input-addon-group">
+                                    <input type="number" id="sellingMargin" placeholder="0" step="any">
+                                    <div class="custom-dropdown" id="marginTypeDropdown" data-select="marginType" style="width: auto; height: 100%; border-left: 1px solid var(--border-color);">
+                                        <select id="marginType" style="display:none;">
+                                            <option value="rupee">₹</option>
+                                            <option value="percent">%</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger" style="border:none; background-color: #F4F4F5; height:100%; min-width: 65px; padding: 0 12px; border-radius: 0 6px 6px 0;">
+                                            <span class="trigger-text">₹</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel" style="min-width: 80px; right: 0; left: auto;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Selling Amount <span class="required-asterisk">*</span></label>
+                                <div class="input-addon-group">
+                                    <span class="input-prefix-label" id="sellBaseUnitPrefix">1 Unit =</span>
+                                    <input type="number" id="sellingAmount" placeholder="0.00" min="0" step="0.01">
+                                    <div class="custom-dropdown" id="sellingTaxDropdown" data-select="sellingTaxType" style="width: auto; height: 100%; border-left: 1px solid var(--border-color);">
+                                        <select id="sellingTaxType" style="display:none;">
+                                            <option value="without">without tax</option>
+                                            <option value="with">with tax</option>
+                                        </select>
+                                        <div class="custom-dropdown-trigger" style="border:none; background-color: #F4F4F5; height:100%; min-width: 115px; padding: 0 12px; border-radius: 0 6px 6px 0;">
+                                            <span class="trigger-text">without tax</span>
+                                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="custom-dropdown-panel" style="min-width: 120px; right: 0; left: auto;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Conversions Dynamic Grid (Replaces Standard HTML Table to match image) -->
+                        <div class="conversions-grid-container" id="conversionsGridContainer" style="display: none; margin-top: 16px; overflow: visible !important;">
+                            <div class="conversions-grid-header">
+                                <div style="padding-left: 4px;">Unit</div>
+                                <div>Conversion</div>
+                                <div>Selling Amount</div>
+                                <div style="width: 40px;"></div>
+                            </div>
+                            <div id="conversionsGridBody">
+                                <!-- Dynamic conversion rows injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Right Sidebar Column -->
+                <div class="create-sidebar-column">
+                    
+                    <!-- Product Image -->
+                    <div class="create-card product-image-card" style="position: relative;">
+                        <div class="create-card-title" style="margin: 0;">Product Image</div>
+                        <div class="image-preview-container-new" id="imagePreviewContainer">
+                            <!-- Image delete button placed in top right corner of the container -->
+                            <button type="button" class="image-delete-btn-new" id="deleteImgBtn" style="display: none;">
+                                <i data-lucide="trash-2" style="width: 20px; height: 20px; color: #EF4444; stroke-width: 2;"></i>
+                            </button>
+                            
+                            <div id="imagePlaceholder" class="image-placeholder-new">
+                                <i data-lucide="image" style="width: 48px; height: 48px; color: #94A3B8; stroke-width: 1.5;"></i>
+                                <span style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">Upload image or capture</span>
+                            </div>
+                            
+                            <img id="previewImage" src="" alt="Product Preview" class="preview-image-new" style="display: none;">
+                            
+                            <!-- Sleek chevron arrows overlay -->
+                            <button type="button" class="carousel-arrow-btn carousel-arrow-left" id="prevImgBtn" style="display: none;">
+                                <i data-lucide="chevron-left" style="width: 20px; height: 20px;"></i>
+                            </button>
+                            <button type="button" class="carousel-arrow-btn carousel-arrow-right" id="nextImgBtn" style="display: none;">
+                                <i data-lucide="chevron-right" style="width: 20px; height: 20px;"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Image counter placed over the image container at bottom -->
+                        <div id="imgCounter" class="image-counter-text" style="display: none;">1/1</div>
+                        
+                        <!-- Upload and Camera action buttons side-by-side -->
+                        <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+                        <div class="image-action-buttons-group">
+                            <button type="button" class="btn-image-action" id="uploadImgBtn">
+                                <i data-lucide="upload" style="width: 20px; height: 20px; margin-right: 8px;"></i> Upload
+                            </button>
+                            <button type="button" class="btn-image-action" id="cameraImgBtn">
+                                <i data-lucide="aperture" style="width: 20px; height: 20px; margin-right: 8px;"></i> Camera
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tag Action Panel -->
+                    <div class="create-card" style="padding: 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <div style="background-color: #F8FAFC; padding: 12px 16px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 14px; color: var(--text-main);">
+                            Tag
+                        </div>
+                        <div style="padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <button type="button" id="previewTagBtn" style="height: 64px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; border: 1px solid #000B58; border-radius: 8px; background-color: #F8FAFC; color: #000B58; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
+                                <i data-lucide="eye" style="width: 20px; height: 20px;"></i> Preview
+                            </button>
+                            <button type="button" id="printTagBtn" disabled style="height: 64px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; border: 1px solid #000B58; border-radius: 8px; background-color: #F8FAFC; color: #000B58; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
+                                <i data-lucide="printer" style="width: 20px; height: 20px;"></i> Print
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Sticky Action Bar / Footer -->
+            <div class="sticky-action-bar-new">
+                <div class="footer-left">
+                    <a href="items.html" class="btn-footer-outline" style="text-decoration: none;">
+                        <i data-lucide="chevron-left" style="width: 16px; height: 16px; margin-right: 4px; stroke-width: 2.5;"></i> Back
+                    </a>
+                </div>
+                <div class="footer-right">
+                    <button type="button" class="btn-footer-outline" id="saveAddBtn">Save & Add</button>
+                    <button type="button" class="btn-footer-solid" id="saveItemBtn">Save</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Live Webcam Capture Overlay -->
+    <div class="camera-overlay" id="cameraOverlay">
+        <div class="camera-container">
+            <div class="camera-header">
+                <h3>Capture Product Photo</h3>
+                <button class="camera-close" id="closeCameraBtn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="camera-video-wrapper">
+                <video id="webcamVideo" autoplay playsinline muted></video>
+            </div>
+            <div class="camera-actions-row">
+                <button class="btn btn-outline" id="cancelCaptureBtn">Cancel</button>
+                <button class="btn btn-primary" id="captureBtn" style="background-color: var(--primary-color);">
+                    <i data-lucide="aperture" class="btn-icon"></i> Take Photo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Preview Modal -->
+    <div id="tagPreviewModal" class="modal" style="z-index: 10000;">
+        <div class="modal-content" style="max-width: 400px; padding: 0; border-radius: 12px; overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); background-color: white;">
+                <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-main);">Tag Preview</h3>
+                <button type="button" id="closeTagPreviewBtn" style="background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            <div style="padding: 32px 24px; background-color: #F4F4F5; display: flex; justify-content: center; align-items: center; min-height: 200px;">
+                <div class="tag-sticker-container-new" style="background: none; border: none; padding: 0;">
+                    <div class="tag-sticker-box-new">
+                        <div class="tag-sticker-left">
+                            <div class="tag-qrcode-new" id="tagQRCode"></div>
+                        </div>
+                        <div class="tag-sticker-right">
+                            <div class="tag-code-new" id="tagCodeTag">---</div>
+                            <div class="tag-name-new" id="tagNameTag">---</div>
+                            <div class="tag-price-new" id="tagPriceTag">---</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script src="js/create-item.js"></script>
+</body>
+</html>
