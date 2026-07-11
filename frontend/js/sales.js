@@ -2,6 +2,7 @@
 
 let allItems = [];
 let allUnits = [];
+let globalCustomers = [];
 let billingRows = []; // Array of { item, qty, unitIndex, rate, taxPercent }
 let html5QrCode = null;
 
@@ -64,16 +65,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadAPIData() {
     try {
-        const [resItems, resUnits] = await Promise.all([
+        const [resItems, resUnits, resCust] = await Promise.all([
             fetch('/api/items'),
-            fetch('/api/units')
+            fetch('/api/units'),
+            fetch('/api/customers')
         ]);
         allItems = await resItems.json();
         allUnits = await resUnits.json();
+        globalCustomers = await resCust.json();
     } catch (err) {
         console.error('Error loading API data:', err);
         allItems = [];
         allUnits = [];
+        globalCustomers = [];
     }
 }
 
@@ -156,9 +160,9 @@ function setupSearch() {
             <div class="billing-search-dropdown-item" data-code="${item.code}">
                 <div>
                     <span class="item-name">${item.name}</span>
-                    <span class="item-code">${item.code}</span>
+                    <span class="item-code">(${item.code})</span>
                 </div>
-                <span class="item-price">₹${parseFloat(item.sellingPrice || 0).toFixed(2)}</span>
+                <span class="item-price">${item.stock || 0} / ${item.unit || 'Unit'}</span>
             </div>
         `).join('');
 
@@ -749,9 +753,14 @@ function setupFooterButtons() {
                 showToast('No items in bill', 'error');
                 return;
             }
+            const wasEditing = !!window.editingInvoiceNumber;
             await saveBill();
             clearInvoiceForm();
-            await incrementInvoiceNumber();
+            if (wasEditing) {
+                await initInvoiceNumber();
+            } else {
+                await incrementInvoiceNumber();
+            }
             showToast('Bill saved! New bill started.', 'success');
         });
     }
@@ -768,9 +777,14 @@ function setupFooterButtons() {
                 showToast('No items in bill', 'error');
                 return;
             }
+            const wasEditing = !!window.editingInvoiceNumber;
             await saveBill();
             clearInvoiceForm();
-            await incrementInvoiceNumber();
+            if (wasEditing) {
+                await initInvoiceNumber();
+            } else {
+                await incrementInvoiceNumber();
+            }
             showToast('Bill saved!', 'success');
             // Trigger print after a short delay
             setTimeout(() => window.print(), 500);
@@ -785,11 +799,15 @@ async function saveBill() {
     const grandTotal = Math.round(parseFloat(document.getElementById('summaryGrandTotal').textContent.replace('₹', '')) || 0);
     const receivedAmount = receivedPayments.reduce((sum, p) => sum + p.amount, 0);
     const customerName = activeCustomer ? activeCustomer.name : 'Walk In Customer';
+    const customerMobile = activeCustomer ? activeCustomer.mobile : '9994121042';
+    const customerAddress = activeCustomer ? (activeCustomer.address || '') : '';
 
     const billData = {
         invoiceNumber,
         date: billingDate,
         customerName,
+        customerMobile,
+        customerAddress,
         receivedAmount,
         grandTotal,
         payments: receivedPayments,
@@ -818,13 +836,28 @@ async function saveBill() {
     // Save to sales history via API
     try {
         const resSales = await fetch('/api/sales');
-        const salesHistory = await resSales.json();
-        salesHistory.push(billData);
+        let salesHistory = await resSales.json();
+        
+        if (window.editingInvoiceNumber && window.editingInvoiceNumber === billData.invoiceNumber) {
+            const index = salesHistory.findIndex(s => s.invoiceNumber === billData.invoiceNumber);
+            if (index !== -1) {
+                if (salesHistory[index].id) {
+                    billData.id = salesHistory[index].id;
+                }
+                salesHistory[index] = billData;
+            } else {
+                salesHistory.push(billData);
+            }
+        } else {
+            salesHistory.push(billData);
+        }
+        
         await fetch('/api/sales', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(salesHistory)
         });
+        window.editingInvoiceNumber = null;
     } catch (err) {
         console.error('Error saving bill:', err);
     }
@@ -977,8 +1010,8 @@ async function setupCustomerModal() {
         const query = filter.trim().toLowerCase();
         
         const filtered = customers.filter(c => 
-            c.name.toLowerCase().includes(query) || 
-            c.mobile.includes(query)
+            (c.name && c.name.trim() !== '') && 
+            ((c.name || '').toLowerCase().includes(query) || (c.mobile || '').includes(query))
         );
 
         listContainer.innerHTML = '';
@@ -990,12 +1023,12 @@ async function setupCustomerModal() {
         filtered.forEach(c => {
             const card = document.createElement('div');
             card.className = 'customer-list-card';
-            if (c.id === currentSelectedId) {
+            if (String(c.id) === String(currentSelectedId)) {
                 card.classList.add('active');
             }
             card.innerHTML = `
-                <span class="cust-card-name">${c.name}</span>
-                <span class="cust-card-mobile">${c.mobile}</span>
+                <span class="cust-card-name">${c.name || 'Unknown'}</span>
+                <span class="cust-card-mobile">${c.mobile || ''}</span>
             `;
             card.addEventListener('click', () => {
                 listContainer.querySelectorAll('.customer-list-card').forEach(el => el.classList.remove('active'));
@@ -1008,7 +1041,7 @@ async function setupCustomerModal() {
     }
 
     // Modal Visibility Control
-    const openModal = async () => {
+    const openModal = async (forceNew = false) => {
         modal.style.display = 'flex';
         try {
             const res = await fetch('/api/customers');
@@ -1017,7 +1050,11 @@ async function setupCustomerModal() {
             console.error(err);
         }
         ensureWalkInCustomer(customers);
-        if (activeCustomer) {
+        
+        if (forceNew === true) {
+            currentSelectedId = null;
+            loadCustomerForm(null);
+        } else if (activeCustomer) {
             currentSelectedId = activeCustomer.id;
             loadCustomerForm(activeCustomer);
         } else if (customers.length > 0) {
@@ -1034,14 +1071,16 @@ async function setupCustomerModal() {
         modal.style.display = 'none';
     };
 
-    openBtnHeader.addEventListener('click', openModal);
-    openBtnEmpty.addEventListener('click', openModal);
-    openBtnChange.addEventListener('click', openModal);
+    openBtnHeader.addEventListener('click', () => openModal(false));
+    openBtnEmpty.addEventListener('click', () => openModal(false));
+    openBtnChange.addEventListener('click', () => openModal(false));
     backBtn.addEventListener('click', closeModal);
 
     const openBtnList = document.getElementById('addCustFromListBtn');
     if (openBtnList) {
-        openBtnList.addEventListener('click', openModal);
+        openBtnList.addEventListener('click', () => {
+            openModal(true);
+        });
     }
 
     newBtn.addEventListener('click', () => {
@@ -1074,7 +1113,7 @@ async function setupCustomerModal() {
 
         if (currentSelectedId) {
             customers = customers.map(c => {
-                if (c.id === currentSelectedId) {
+                if (String(c.id) === String(currentSelectedId)) {
                     savedCust = {
                         ...c, name, mobile, address, country, state, city, pin,
                         taxToggle: isTaxToggled, gstin, pan
@@ -1187,7 +1226,6 @@ function setupSalesListTabs() {
         
         if (activeTab) {
             activeTab.classList.add('active');
-            sessionStorage.setItem('activeSalesTab', activeTab.id);
         }
         if (activeWorkspace) activeWorkspace.style.display = 'flex';
         if (billingFooter) billingFooter.style.display = showFooter ? 'flex' : 'none';
@@ -1254,22 +1292,35 @@ function setupSalesListTabs() {
         });
     }
 
-    // Restore active tab from session storage
-    const savedTabId = sessionStorage.getItem('activeSalesTab');
-    if (savedTabId) {
-        const savedTab = document.getElementById(savedTabId);
-        if (savedTab) savedTab.click();
-    }
 }
 
 async function renderSalesList(filterQuery = '') {
     let salesHistory = [];
+    let allCustomers = [];
     try {
-        const res = await fetch('/api/sales');
-        salesHistory = await res.json();
+        const [resSales, resCust] = await Promise.all([
+            fetch('/api/sales'),
+            fetch('/api/customers')
+        ]);
+        salesHistory = await resSales.json();
+        allCustomers = await resCust.json();
     } catch (err) {
-        console.error('Error loading sales:', err);
+        console.error('Error loading sales or customers:', err);
     }
+
+    // Backfill missing mobile/address for older records
+    salesHistory.forEach(sale => {
+        if (!sale.customerMobile || !sale.customerAddress) {
+            const cust = allCustomers.find(c => c.name === sale.customerName);
+            if (cust) {
+                if (!sale.customerMobile) sale.customerMobile = cust.mobile;
+                if (!sale.customerAddress) sale.customerAddress = cust.address;
+            } else if (sale.customerName === 'Walk In Customer') {
+                if (!sale.customerMobile) sale.customerMobile = '9994121042';
+                if (!sale.customerAddress) sale.customerAddress = '';
+            }
+        }
+    });
     const tableBody = document.getElementById('salesListTableBody');
     if (!tableBody) return;
 
@@ -1279,7 +1330,7 @@ async function renderSalesList(filterQuery = '') {
     // 2. Filter sales if query exists
     const query = filterQuery.toLowerCase().trim();
     let filteredSales = sortedSales.filter(sale => 
-        sale.invoiceNumber.toLowerCase().includes(query) ||
+        (sale.invoiceNumber || '').toLowerCase().includes(query) ||
         (sale.customerName && sale.customerName.toLowerCase().includes(query))
     );
 
@@ -1349,7 +1400,7 @@ async function renderSalesList(filterQuery = '') {
         invLink.style.fontWeight = '500';
         invLink.addEventListener('click', (e) => {
             e.preventDefault();
-            showToast(`Viewing details for ${sale.invoiceNumber}`, 'success');
+            showViewSalesWorkspace(sale);
         });
         tdInv.appendChild(invLink);
         tr.appendChild(tdInv);
@@ -1457,7 +1508,8 @@ async function renderCustomerWorkspace(filterQuery = '') {
     // Filter by customer name query (case-insensitive)
     const query = filterQuery.toLowerCase().trim();
     const filteredCustomers = customers.filter(c => 
-        c.name.toLowerCase().includes(query)
+        (c.name && c.name.trim() !== '') &&
+        (c.name || '').toLowerCase().includes(query)
     );
 
     // Compute stats
@@ -1471,7 +1523,7 @@ async function renderCustomerWorkspace(filterQuery = '') {
         let hasTransactionsInDateRange = false;
 
         salesHistory.forEach(sale => {
-            if (sale.customerName && sale.customerName.toLowerCase() === cust.name.toLowerCase()) {
+            if (sale.customerName && sale.customerName.toLowerCase() === (cust.name || '').toLowerCase()) {
                 const total = parseFloat(sale.grandTotal) || 0;
                 const received = parseFloat(sale.receivedAmount) || 0;
                 const pending = Math.max(0, total - received);
@@ -1492,7 +1544,7 @@ async function renderCustomerWorkspace(filterQuery = '') {
     customers.forEach(cust => {
         let custPending = 0;
         salesHistory.forEach(sale => {
-            if (sale.customerName && sale.customerName.toLowerCase() === cust.name.toLowerCase()) {
+            if (sale.customerName && sale.customerName.toLowerCase() === (cust.name || '').toLowerCase()) {
                 const total = parseFloat(sale.grandTotal) || 0;
                 const received = parseFloat(sale.receivedAmount) || 0;
                 const pending = Math.max(0, total - received);
@@ -1743,8 +1795,7 @@ async function initCreateAmountReceived() {
         });
         
         select.value = '';
-
-        setupArCustomerDropdown();
+        initGenericDropdown('createArCustomerDropdown');
 
         // Initialize table and calculations
         await handleArCustomerChange();
@@ -2185,7 +2236,7 @@ async function renderAmountReceivedWorkspace(filterQuery = '') {
         a.style.fontWeight = '600';
         a.addEventListener('click', (e) => {
             e.preventDefault();
-            alert(`Payment Details:\nAR No: ${p.arNo}\nCustomer: ${p.customerName}\nMobile: ${p.mobile}\nAmount: ₹${p.amount}\nDate: ${p.date}\nDiscount: ₹${p.discount || 0}`);
+            window.location.href = `view-amount-received.html?id=${p.arNo}`;
         });
         tdArNo.appendChild(a);
         tr.appendChild(tdArNo);
@@ -2270,3 +2321,516 @@ window.triggerWorkspaceRender = function(target) {
         renderAmountReceivedWorkspace(searchInput ? searchInput.value : '');
     }
 };
+
+function printSalesInvoice(sale) {
+    const invContent = generateSalesInvoiceHTML(sale);
+    
+    const htmlContent = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Print Invoice</title>' +
+            '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">' +
+            '<style>' +
+                'body { margin: 0; padding: 20px; font-family: \'Inter\', sans-serif; background: white; display: flex; justify-content: center; }' +
+                '.inv-preview-container { background: white; font-family: \'Inter\', sans-serif; color: #000; margin: 0 auto; width: 100%; box-sizing: border-box; }' +
+                '.inv-preview-container .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 12px; margin-bottom: 8px; position: relative; }' +
+                '.inv-preview-container .comp-name { font-size: 1.4em; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; }' +
+                '.inv-preview-container .comp-detail { font-size: 0.9em; line-height: 1.4; color: #000; }' +
+                '.inv-preview-container .table-header { display: flex; font-weight: 600; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; font-size: 0.9em; }' +
+                '.inv-preview-container .table-row { display: flex; margin-bottom: 4px; font-size: 0.9em; }' +
+                '.inv-preview-container .totals-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.9em; }' +
+                '.inv-preview-container .grand-total { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; font-size: 1em; font-weight: 700; margin-bottom: 8px; }' +
+                '@media print { @page { margin: 0; } body { padding: 0; margin: 0; } }' +
+            '</style>' +
+        '</head><body>' +
+            invContent +
+            '<script>' +
+                'window.onload = function() { setTimeout(function() { window.print(); }, 500); }' +
+            '</script>' +
+        '</body></html>';
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    iframe.contentWindow.document.open();
+    iframe.contentWindow.document.write(htmlContent);
+    iframe.contentWindow.document.close();
+
+    setTimeout(() => {
+        try { document.body.removeChild(iframe); } catch(e){}
+    }, 5000);
+}
+
+// ============================================================
+// VIEW SALES WORKSPACE & EDIT/DELETE FLOW
+// ============================================================
+let currentViewSale = null;
+let allViewSales = [];
+
+async function showViewSalesWorkspace(sale) {
+    currentViewSale = sale;
+    
+    // Hide all workspaces
+    const workspaces = ['.billing-workspace', '#salesListWorkspace', '#customerWorkspace', '#amountReceivedWorkspace'];
+    workspaces.forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) el.style.display = 'none';
+    });
+    
+    // Hide billing footer just in case
+    const billingFooter = document.getElementById('mainBillingFooter');
+    if (billingFooter) billingFooter.style.display = 'none';
+    
+    // Hide page tabs
+    const pageTabs = document.querySelector('.page-tabs');
+    if (pageTabs) pageTabs.style.display = 'none';
+    
+    // Show viewSalesWorkspace
+    const viewWs = document.getElementById('viewSalesWorkspace');
+    if (viewWs) viewWs.style.display = 'flex';
+    
+    // Update Header
+    document.getElementById('viewSalesHeaderTitle').textContent = sale.invoiceNumber;
+    
+    try {
+        const res = await fetch('/api/sales');
+        allViewSales = await res.json();
+    } catch (err) {
+        console.error('Error fetching sales for view:', err);
+        allViewSales = [sale]; // Fallback
+    }
+    
+    renderViewSalesSidebar('');
+    renderViewSalesPreview(sale);
+    setupViewSalesEvents();
+}
+
+function renderViewSalesSidebar(searchQuery = '') {
+    const listContainer = document.getElementById('viewSalesInvoiceList');
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+    
+    const query = searchQuery.toLowerCase().trim();
+    let filtered = [...allViewSales].reverse().filter(s => {
+        return (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(query)) ||
+               (s.customerName && s.customerName.toLowerCase().includes(query));
+    });
+    
+    if (filtered.length === 0) {
+        listContainer.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px; text-align: center;">No invoices found</div>';
+        return;
+    }
+    
+    filtered.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'view-invoice-card';
+        card.style.cssText = `padding: 12px; border-radius: 8px; border: 1.5px solid ${currentViewSale && s.invoiceNumber === currentViewSale.invoiceNumber ? '#000B58' : 'transparent'}; background: ${currentViewSale && s.invoiceNumber === currentViewSale.invoiceNumber ? 'white' : 'transparent'}; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;`;
+        
+        const total = parseFloat(s.grandTotal) || 0;
+        const received = parseFloat(s.receivedAmount) || 0;
+        const pending = Math.max(0, total - received);
+        
+        card.innerHTML = `
+            <div>
+                <div style="font-weight: ${currentViewSale && s.invoiceNumber === currentViewSale.invoiceNumber ? '600' : '500'}; font-size: 14px; color: var(--text-main); margin-bottom: 4px;">${s.invoiceNumber}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">${s.customerName || 'Walk In Customer'}</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 13px; font-weight: 600; color: #1e293b;">₹${total.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                ${pending > 0 ? `<div style="color: #EF4444; font-size: 11px; font-weight: 500; margin-top: 2px;">Pending</div>` : `<div style="color: #22C55E; font-size: 11px; font-weight: 500; margin-top: 2px;">Paid</div>`}
+            </div>
+        `;
+        
+        card.addEventListener('click', () => {
+            currentViewSale = s;
+            document.getElementById('viewSalesHeaderTitle').textContent = s.invoiceNumber;
+            renderViewSalesSidebar(document.getElementById('viewSalesSearchInput').value);
+            renderViewSalesPreview(s);
+        });
+        
+        listContainer.appendChild(card);
+    });
+}
+
+function renderViewSalesPreview(sale) {
+    const container = document.getElementById('viewSalesPreviewContainer');
+    if (!container) return;
+    
+    const htmlContent = generateSalesInvoiceHTML(sale);
+    container.innerHTML = htmlContent;
+}
+
+let viewSalesEventsBound = false;
+function setupViewSalesEvents() {
+    if (viewSalesEventsBound) return;
+    viewSalesEventsBound = true;
+    
+    const searchInput = document.getElementById('viewSalesSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            renderViewSalesSidebar(e.target.value);
+        });
+    }
+    
+    const backBtnHeader = document.getElementById('viewSalesBackHeaderBtn');
+    const backBtnFooter = document.getElementById('viewSalesBackFooterBtn');
+    
+    const handleBack = () => {
+        document.getElementById('viewSalesWorkspace').style.display = 'none';
+        document.getElementById('salesListWorkspace').style.display = 'flex';
+        
+        const pageTabs = document.querySelector('.page-tabs');
+        if (pageTabs) pageTabs.style.display = '';
+        
+        renderSalesList(); // Refresh list in case of changes
+    };
+    
+    if (backBtnHeader) backBtnHeader.addEventListener('click', handleBack);
+    if (backBtnFooter) backBtnFooter.addEventListener('click', handleBack);
+    
+    const printBtn = document.getElementById('viewSalesPrintBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', () => {
+            if (currentViewSale) printSalesInvoice(currentViewSale);
+        });
+    }
+    
+    const editBtn = document.getElementById('viewSalesEditBtn');
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (currentViewSale) {
+                await editSalesInvoice(currentViewSale);
+            }
+        });
+    }
+    
+    const deleteBtn = document.getElementById('viewSalesDeleteBtn');
+    const deleteModal = document.getElementById('deleteSalesModal');
+    const cancelDeleteBtn = document.getElementById('cancelSalesDeleteBtn');
+    const confirmDeleteBtn = document.getElementById('confirmSalesDeleteBtn');
+    
+    if (deleteBtn && deleteModal) {
+        deleteBtn.addEventListener('click', () => {
+            deleteModal.style.display = 'flex';
+        });
+    }
+    
+    if (cancelDeleteBtn && deleteModal) {
+        cancelDeleteBtn.addEventListener('click', () => {
+            deleteModal.style.display = 'none';
+        });
+    }
+    
+    if (confirmDeleteBtn && deleteModal) {
+        confirmDeleteBtn.addEventListener('click', async () => {
+            if (!currentViewSale) return;
+            
+            try {
+                const res = await fetch('/api/sales');
+                let sales = await res.json();
+                
+                sales = sales.filter(s => s.invoiceNumber !== currentViewSale.invoiceNumber);
+                
+                await fetch('/api/sales', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sales)
+                });
+                
+                showToast('Invoice deleted successfully', 'success');
+                deleteModal.style.display = 'none';
+                handleBack();
+                
+            } catch (err) {
+                console.error('Error deleting invoice:', err);
+                showToast('Failed to delete invoice', 'error');
+                deleteModal.style.display = 'none';
+            }
+        });
+    }
+}
+
+async function editSalesInvoice(sale) {
+    // Nav back to billing workspace
+    document.getElementById('viewSalesWorkspace').style.display = 'none';
+    
+    const pageTabs = document.querySelector('.page-tabs');
+    if (pageTabs) pageTabs.style.display = '';
+    
+    const tabBilling = document.getElementById('tabBilling');
+    const billingWorkspace = document.querySelector('.billing-workspace');
+    const billingFooter = document.getElementById('mainBillingFooter');
+    
+    document.querySelectorAll('.page-tabs .tab').forEach(t => t.classList.remove('active'));
+    if (tabBilling) tabBilling.classList.add('active');
+    
+    if (billingWorkspace) billingWorkspace.style.display = 'flex';
+    if (billingFooter) billingFooter.style.display = 'flex';
+    
+    // Set editing context
+    window.editingInvoiceNumber = sale.invoiceNumber;
+    
+    // Set Date & Invoice No
+    document.getElementById('invoiceNumber').textContent = sale.invoiceNumber;
+    document.getElementById('billingDate').textContent = sale.date;
+    
+    // Set Customer
+    let customers = [];
+    try {
+        const resCust = await fetch('/api/customers');
+        customers = await resCust.json();
+    } catch(e) {}
+    ensureWalkInCustomer(customers);
+    
+    const foundCustomer = customers.find(c => c.name === sale.customerName);
+    activeCustomer = foundCustomer || { name: sale.customerName, mobile: sale.customerMobile || '9994121042', address: sale.customerAddress || '' };
+    
+    // Update Customer UI
+    const emptyState = document.getElementById('customerEmptyState');
+    const selectedState = document.getElementById('customerSelectedState');
+    const nameSpan = document.getElementById('selectedCustName');
+    const mobileSpan = document.getElementById('selectedCustMobile');
+    
+    if (emptyState && selectedState) {
+        emptyState.style.display = 'none';
+        selectedState.style.display = 'block';
+        if (nameSpan) nameSpan.textContent = activeCustomer.name;
+        if (mobileSpan) mobileSpan.textContent = activeCustomer.mobile;
+    }
+    
+    // Hydrate Items
+    billingRows = [];
+    if (sale.items && sale.items.length > 0) {
+        // Fetch all items to get full item objects
+        let allItems = [];
+        try {
+            const resItems = await fetch('/api/items');
+            allItems = await resItems.json();
+        } catch(e) {}
+        
+        sale.items.forEach(si => {
+            const dbItem = allItems.find(i => String(i.code) === String(si.code)) || {
+                code: si.code,
+                name: si.name,
+                sellingPrice: si.rate,
+                sellingTax: { rate: si.taxPercent || 0, type: 'Inclusive' },
+                units: []
+            };
+            
+            billingRows.push({
+                item: dbItem,
+                qty: si.qty || 1,
+                rate: si.rate || 0,
+                disc: si.disc || 0,
+                taxPercent: si.taxPercent || dbItem.sellingTax?.rate || 0,
+                sellingTaxType: dbItem.sellingTax?.type || 'Inclusive',
+                unitOptions: dbItem.units && dbItem.units.length > 0 ? dbItem.units.map(u => ({label: u.name, conversion: 1})) : [{label: si.unit || 'PCS', conversion: 1}],
+                unitIndex: 0
+            });
+        });
+    }
+    
+    // Set received payments
+    if (sale.payments && sale.payments.length > 0) {
+        receivedPayments = sale.payments;
+    } else {
+        receivedPayments = [{ mode: 'Cash', amount: sale.receivedAmount || 0, isAutoUpdated: false }];
+    }
+    
+    // Determine Discount - Reverse engineering global discount
+    const computedSubTotal = billingRows.reduce((sum, r) => sum + (r.qty * r.rate - (r.disc || 0)), 0);
+    const computedTax = billingRows.reduce((sum, r) => sum + calcTaxAmt(r.qty * r.rate - (r.disc || 0), r.taxPercent, r.sellingTaxType), 0);
+    const rawTotal = computedSubTotal + computedTax;
+    
+    const discountInput = document.getElementById('billDiscountInput');
+    const discountType = document.getElementById('billDiscountType');
+    
+    if (rawTotal - sale.grandTotal > 1) {
+        if (discountInput) discountInput.value = (rawTotal - sale.grandTotal).toFixed(2);
+        if (discountType) discountType.value = 'rupee';
+    } else {
+        if (discountInput) discountInput.value = '0';
+    }
+    
+    renderBillingTable();
+    updateSummary();
+    renderReceivedPayments();
+}
+
+function generateSalesInvoiceHTML(sale) {
+    const accDataStr = localStorage.getItem('myAccountData');
+    const accData = accDataStr ? JSON.parse(accDataStr) : {};
+    
+    const invDataStr = localStorage.getItem('invoiceSettings');
+    const invData = invDataStr ? JSON.parse(invDataStr) : {
+        invWidth: '3inch', invOptPhone: true, invOptGSTIN: false, invOptPAN: false, invOptLogo: false,
+        invOptHSN: false, invOptTaxPct: false, invOptTaxAmt: false, invOptTotalAmt: false,
+        invOptTaxBreakup: true, invOptTotalBreakup: true, invOptRound: true,
+        invOptPaidAmt: true, invOptPendingAmt: true, note: 'This is a computer-generated invoice.'
+    };
+
+    let invWidth = invData.invWidth || '3inch';
+    let fontSize = '10px';
+    let maxWidth = '450px';
+    
+    if(invWidth === '4inch') {
+        maxWidth = '600px';
+        fontSize = '12px';
+    } else if (invWidth === '2inch') {
+        maxWidth = '300px';
+        fontSize = '7px';
+    }
+
+    let addrParts = [];
+    if(accData.address) addrParts.push(accData.address);
+    if(accData.city) addrParts.push(accData.city);
+    if(accData.state || accData.pin) addrParts.push((accData.state || '') + (accData.state && accData.pin ? ' - ' : '') + (accData.pin || ''));
+    let finalAddr = addrParts.join('<br>');
+
+    let itemsHTML = '';
+    let sno = 1;
+    let computedSubTotal = 0;
+    let computedTaxAmt = 0;
+
+    (sale.items || []).forEach(item => {
+        let hsnTD = invData.invOptHSN ? '<div style="flex: 1.2;" class="v-hsn">' + (item.hsn || '') + '</div>' : '';
+        let taxPctTD = invData.invOptTaxPct ? '<div style="flex: 1;" class="v-taxpct">' + (item.taxPercent || item.tax || 0) + '%</div>' : '';
+        let taxAmtTD = invData.invOptTaxAmt ? '<div style="flex: 1.2;" class="v-taxamt">₹' + (item.taxAmt || 0).toFixed(2) + '</div>' : '';
+        let totalAmtTD = invData.invOptTotalAmt ? '<div style="flex: 1.2;" class="v-total">₹' + (item.totalAmt || item.amount || 0).toFixed(2) + '</div>' : '';
+        
+        computedSubTotal += (item.finalAmt || ((item.qty * item.rate) - (item.disc || 0)));
+        computedTaxAmt += (item.taxAmt || 0);
+
+        itemsHTML += '<div class="table-row">' +
+                '<div style="flex: 0.5;">' + (sno++) + '</div>' +
+                '<div style="flex: 2;">' + (item.name || '') + '</div>' +
+                hsnTD +
+                '<div style="flex: 1.2;">' + (item.qty || 1) + ' ' + (item.unit || '') + '</div>' +
+                '<div style="flex: 1.2;">₹' + (item.rate || item.price || 0).toFixed(2) + '</div>' +
+                '<div style="flex: 1.2;">₹' + (item.finalAmt || item.amount || 0).toFixed(2) + '</div>' +
+                taxPctTD +
+                taxAmtTD +
+                totalAmtTD +
+            '</div>';
+    });
+
+    const grandTotal = parseFloat(sale.grandTotal) || 0;
+    const received = parseFloat(sale.receivedAmount) || 0;
+    const pending = Math.max(0, grandTotal - received);
+
+    const rawTotal = computedSubTotal + computedTaxAmt;
+    let computedDiscount = 0;
+    let roundOff = 0;
+    
+    if (rawTotal - grandTotal > 1) {
+        computedDiscount = rawTotal - grandTotal;
+        roundOff = 0;
+    } else {
+        roundOff = grandTotal - rawTotal;
+    }
+    const afterDiscount = computedSubTotal - computedDiscount;
+
+    let custObj = globalCustomers.find(c => c.name === sale.customerName || String(c.id) === String(sale.customerId));
+    
+    let custAddr = '';
+    if (custObj) {
+        let parts = [];
+        if (custObj.address) parts.push(custObj.address);
+        if (custObj.city) parts.push(custObj.city);
+        
+        let statePin = [];
+        if (custObj.state) statePin.push(custObj.state);
+        if (custObj.pin) statePin.push(custObj.pin);
+        if (statePin.length > 0) parts.push(statePin.join(' - '));
+        
+        if (custObj.country) parts.push(custObj.country);
+        
+        custAddr = parts.join(', ');
+    } else {
+        custAddr = sale.customerAddress || '';
+    }
+
+    let custMobile = sale.customerMobile || (custObj ? custObj.mobile : '');
+    let custGST = custObj ? custObj.gstin : '';
+
+    return '<div id="invPreviewArea" style="width: 100%; max-width: ' + maxWidth + ';">' + 
+        '<div class="inv-preview-container" style="font-size: ' + fontSize + ';">' +
+            '<div class="header">' +
+                (invData.invOptLogo && accData.logo ? '<img id="prevLogo" src="' + accData.logo + '" style="position: absolute; top: 10px; left: 0; max-width: 60px; max-height: 60px; object-fit: contain;">' : '') +
+                '<div class="comp-name" id="prevCompName">' + (accData.company || 'Company Name') + '</div>' +
+                '<div class="comp-detail" id="prevAddress">' + (finalAddr || '') + '</div>' +
+                (invData.invOptPhone && accData.mobile ? '<div class="comp-detail" id="prevPhoneRow">Ph No : <span id="prevPhone">' + accData.mobile + '</span></div>' : '') +
+                '<div class="comp-detail" id="prevTaxInfo" style="margin-top: 4px; ' + ((invData.invOptGSTIN && accData.gstin) || (invData.invOptPAN && accData.pan) ? '' : 'display: none;') + '">' +
+                    (invData.invOptGSTIN && accData.gstin ? '<span id="prevGSTINRow">GSTIN No : <span id="prevGSTIN">' + accData.gstin + '</span></span>' : '') +
+                    (invData.invOptPAN && accData.pan ? '<span id="prevPANRow" style="' + (invData.invOptGSTIN && accData.gstin ? 'margin-left: 8px;' : '') + '">PAN No : <span id="prevPAN">' + accData.pan + '</span></span>' : '') +
+                '</div>' +
+            '</div>' +
+            
+            '<div style="border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; font-size: 0.9em;">' +
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">' +
+                    '<div style="display: flex;"><div style="width: 85px;">Customer Name</div><div>- <span style="color:#000;">' + (sale.customerName || 'Walk In Customer') + '</span></div></div>' +
+                    '<div style="display: flex;"><div style="width: 60px; text-align: right;">Invoice No</div><div> - <span style="color:#000;">' + (sale.invoiceNumber || '') + '</span></div></div>' +
+                '</div>' +
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">' +
+                    '<div style="display: flex;"><div style="width: 85px;">Mobile Number</div><div>- <span style="color:#000;">' + custMobile + '</span></div></div>' +
+                    '<div style="display: flex;"><div style="width: 60px; text-align: right;">Date</div><div> - <span style="color:#000;">' + (sale.date || '') + '</span></div></div>' +
+                '</div>' +
+                (custAddr ? '<div style="display: flex; margin-bottom: 4px;"><div style="width: 85px; flex-shrink: 0;">Address</div><div style="flex-grow: 1;">- <span style="color:#000; word-break: break-word; white-space: normal;">' + custAddr + '</span></div></div>' : '') +
+                (custGST ? '<div style="display: flex;"><div style="width: 85px; flex-shrink: 0;">GSTIN No</div><div style="flex-grow: 1;">- <span style="color:#000;">' + custGST + '</span></div></div>' : '') +
+            '</div>' +
+            
+            '<div style="border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px;">' +
+                '<div class="table-header">' +
+                    '<div style="flex: 0.5;">S No</div>' +
+                    '<div style="flex: 2;">Item Name</div>' +
+                    (invData.invOptHSN ? '<div style="flex: 1.2;" id="prevColHSN">HSN Code</div>' : '') +
+                    '<div style="flex: 1.2;">Qty/Unit</div>' +
+                    '<div style="flex: 1.2;">Rate</div>' +
+                    '<div style="flex: 1.2;">Amount</div>' +
+                    (invData.invOptTaxPct ? '<div style="flex: 1;" id="prevColTaxPct">Tax %</div>' : '') +
+                    (invData.invOptTaxAmt ? '<div style="flex: 1.2;" id="prevColTaxAmt">Tax Amt</div>' : '') +
+                    (invData.invOptTotalAmt ? '<div style="flex: 1.2;" id="prevColTotal">Amount</div>' : '') +
+                '</div>' +
+                itemsHTML +
+            '</div>' +
+            
+            '<div style="margin-bottom: 8px;">' +
+                '<div class="totals-row"><div>Sub Total</div><div>₹' + computedSubTotal.toFixed(2) + '</div></div>' +
+                '<div class="totals-row"><div>Discount</div><div>₹' + computedDiscount.toFixed(2) + '</div></div>' +
+                '<div class="totals-row"><div>After Discount</div><div>₹' + afterDiscount.toFixed(2) + '</div></div>' +
+                
+                (invData.invOptTaxBreakup ? 
+                    '<div id="prevTaxBreakup">' +
+                        (computedTaxAmt > 0 ? '<div class="totals-row"><div>CGST</div><div>₹' + (computedTaxAmt / 2).toFixed(2) + '</div></div>' +
+                        '<div class="totals-row"><div>SGST</div><div>₹' + (computedTaxAmt / 2).toFixed(2) + '</div></div>' : '') +
+                    '</div>'
+                : '') +
+                
+                (invData.invOptTotalBreakup ? '<div class="totals-row" id="prevTotalBreakup"><div>Total</div><div>₹' + rawTotal.toFixed(2) + '</div></div>' : '') +
+                (invData.invOptRound ? '<div class="totals-row" id="prevRound"><div>Round Off</div><div>₹' + roundOff.toFixed(2) + '</div></div>' : '') +
+            '</div>' +
+            
+            '<div class="totals-row grand-total">' +
+                '<div>Grand Total</div>' +
+                '<div id="prevGrandTotal">₹' + grandTotal.toFixed(2) + '</div>' +
+            '</div>' +
+            
+            '<div style="border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 8px;">' +
+                (invData.invOptPaidAmt ? '<div class="totals-row" id="prevPaidAmt"><div>Paid Amount</div><div>₹' + received.toFixed(2) + '</div></div>' : '') +
+                (invData.invOptPendingAmt ? '<div class="totals-row" id="prevPendingAmt"><div>Pending Amount</div><div>₹' + pending.toFixed(2) + '</div></div>' : '') +
+            '</div>' +
+            
+            '<div style="font-size: 0.9em;">' +
+                '<div style="font-weight: 700; margin-bottom: 2px;">NOTE :</div>' +
+                '<div id="prevNote" style="white-space: pre-wrap; line-height: 1.4;">' + (invData.note || '') + '</div>' +
+            '</div>' +
+            
+            '<div style="text-align: center; margin-top: 24px; font-weight: 600; font-size: 0.9em;">' +
+                'THANK YOU PURCHASE !!!!' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}

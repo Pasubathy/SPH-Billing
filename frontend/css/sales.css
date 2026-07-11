@@ -72,7 +72,6 @@
     position: relative;
     border-top-left-radius: 7px;
     border-bottom-left-radius: 7px;
-    overflow: hidden;
 }
 
 .billing-search-input {
@@ -85,6 +84,8 @@
     font-family: inherit;
     font-size: 14px;
     color: var(--text-main);
+    border-top-left-radius: 7px;
+    border-bottom-left-radius: 7px;
 }
 
 .billing-barcode-btn {
@@ -425,15 +426,12 @@
 .billing-search-dropdown-item .item-code {
     font-size: 12px;
     color: var(--text-muted);
-    background: #F1F5F9;
-    padding: 2px 8px;
-    border-radius: 4px;
 }
 
 .billing-search-dropdown-item .item-price {
-    font-weight: 600;
-    color: var(--primary-color);
+    font-weight: 500;
     font-size: 13px;
+    color: var(--text-main);
 }
 
 .billing-search-dropdown-empty {

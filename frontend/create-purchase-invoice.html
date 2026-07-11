@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SPH Billing - Create Purchase Invoice</title>
-    <link rel="stylesheet" href="css/style.css?v=6">
+    <link rel="stylesheet" href="css/style.css?v=9">
     <link rel="stylesheet" href="css/sales.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -110,7 +110,7 @@
             align-items: center;
         }
         .discount-inputs input {
-            width: 60px;
+            width: 90px;
             text-align: right;
             border: 1px solid var(--border-color);
             border-radius: 4px;
@@ -196,7 +196,7 @@
         <!-- Main Content -->
         <main class="main-content" style="display: flex; flex-direction: column; overflow: hidden; background-color: #F8FAFC;">
             <!-- Page Header -->
-            <div class="page-header" style="height: 45px; padding: 0 16px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+            <div class="page-header" style="height: 45px; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
                 <h1 class="page-title" style="margin: 0; font-size: 16px; font-weight: 600;">Create Purchase Invoice</h1>
                 <button id="generateAiBtn" class="ai-btn" style="height: 28px; padding: 0 12px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-color); background: white; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
                     <i data-lucide="sparkles" style="width: 14px; height: 14px; color: #4338CA;"></i> Generate with AI
@@ -208,68 +208,69 @@
                 <!-- Vendor Details Card -->
                 <div class="create-card">
                     <div class="create-card-title">Vendor Details</div>
-                    <div class="create-card-body" style="display: flex; flex-direction: column; gap: 20px;">
-                        <div class="form-grid-pi" style="grid-template-columns: 240px 240px 1fr;">
-                            <!-- Left Column -->
-                            <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div class="form-group">
-                                    <label>PI No <span style="color:red">*</span></label>
-                                    <input type="text" id="piNo" class="custom-form-input" readonly style="background: #F8FAFC;">
+                    <div class="create-card-body" style="display: grid; grid-template-columns: repeat(10, 1fr); gap: 20px;">
+                        <!-- Row 1 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>PI No <span style="color:red">*</span></label>
+                            <input type="text" id="piNo" class="custom-form-input" readonly style="background: #F8FAFC;">
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Purchase Date <span style="color:red">*</span></label>
+                            <input type="date" id="purchaseDate" class="custom-form-input">
+                        </div>
+                        <div class="form-group" style="grid-column: span 6;">
+                            <label>Vendor Name <span style="color:red">*</span></label>
+                            <div class="custom-dropdown" id="vendorDropdown" data-select="vendorSelect" style="height: 38px;">
+                                <select id="vendorSelect" style="display:none;"><option value="">Select Vendor</option></select>
+                                <div class="custom-dropdown-trigger" style="height: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: white;">
+                                    <span class="trigger-text placeholder">Select Vendor</span>
+                                    <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                                 </div>
-                                <div class="form-group">
-                                    <label>Ref No</label>
-                                    <input type="text" id="refNo" class="custom-form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Due Date</label>
-                                    <input type="date" id="dueDate" class="custom-form-input">
-                                </div>
+                                <div class="custom-dropdown-panel" style="width: 100%;"></div>
                             </div>
-                            <!-- Middle Column -->
-                            <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div class="form-group">
-                                    <label>Purchase Date <span style="color:red">*</span></label>
-                                    <input type="date" id="purchaseDate" class="custom-form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Payments Terms</label>
-                                    <select id="paymentTerms" class="custom-form-input" style="appearance: auto; padding-right: 12px;">
-                                        <option value="None">None</option>
-                                        <option value="10 days">10 days</option>
-                                        <option value="15 days">15 days</option>
-                                        <option value="30 days">30 days</option>
-                                        <option value="45 days">45 days</option>
-                                    </select>
-                                </div>
+                        </div>
+
+                        <!-- Row 2 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Ref No</label>
+                            <input type="text" id="refNo" class="custom-form-input">
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Payments Terms</label>
+                            <select id="paymentTerms" class="custom-form-input" style="appearance: auto; padding-right: 12px;">
+                                <option value="None">None</option>
+                                <option value="10 days">10 days</option>
+                                <option value="15 days">15 days</option>
+                                <option value="30 days">30 days</option>
+                                <option value="45 days">45 days</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <label>GSTIN No</label>
+                            <input type="text" id="gstinNo" class="custom-form-input">
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <label>PAN No</label>
+                            <input type="text" id="panNo" class="custom-form-input">
+                        </div>
+
+                        <!-- Row 3 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Due Date</label>
+                            <input type="date" id="dueDate" class="custom-form-input">
+                        </div>
+                        <!-- Empty space to push addresses under Vendor Name -->
+                        <div style="grid-column: span 2;"></div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <label>Bill Address</label>
+                            <textarea id="billAddress" class="custom-form-input" style="min-height: 60px;"></textarea>
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <label>Shipping Address</label>
+                                <a href="#" id="changeShippingAddressBtn" style="font-size: 11px; color: #4338CA; text-decoration: none; font-weight: 500;">Change Address</a>
                             </div>
-                            <!-- Right Column -->
-                            <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div class="form-group" style="grid-column: span 1;">
-                                    <label>Vendor Name <span style="color:red">*</span></label>
-                                    <div class="custom-dropdown" id="vendorDropdown" data-select="vendorSelect" style="height: 38px;">
-                                        <select id="vendorSelect" style="display:none;"><option value="">Select Vendor</option></select>
-                                        <div class="custom-dropdown-trigger" style="height: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: white;">
-                                            <span class="trigger-text placeholder">Select Vendor</span>
-                                            <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
-                                        </div>
-                                        <div class="custom-dropdown-panel" style="width: 100%;"></div>
-                                    </div>
-                                </div>
-                                
-                                <div class="form-grid-pi-address" style="margin-top: -4px;">
-                                    <div class="form-group">
-                                        <label>Bill Address</label>
-                                        <textarea id="billAddress" class="custom-form-input"></textarea>
-                                    </div>
-                                    <div class="form-group">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <label>Shipping Address</label>
-                                            <a href="#" id="changeShippingAddressBtn" style="font-size: 11px; color: #4338CA; text-decoration: none; font-weight: 500;">Change Address</a>
-                                        </div>
-                                        <textarea id="shipAddress" class="custom-form-input"></textarea>
-                                    </div>
-                                </div>
-                            </div>
+                            <textarea id="shipAddress" class="custom-form-input" style="min-height: 60px;"></textarea>
                         </div>
                     </div>
                 </div>
@@ -300,6 +301,7 @@
                                         <th style="width: 70px; text-align: left;">Qty</th>
                                         <th style="width: 90px; text-align: left;">Unit</th>
                                         <th style="width: 90px; text-align: left;">Rate</th>
+                                        <th style="width: 100px; text-align: left;">Amount</th>
                                         <th style="width: 80px; text-align: left;">Discount</th>
                                         <th style="width: 100px; text-align: left;">Final Amt</th>
                                         <th style="width: 110px; text-align: left;">Tax</th>
@@ -311,8 +313,9 @@
                                     <!-- Dynamic Rows -->
                                 </tbody>
                                 <tfoot>
-                                    <tr style="background: #F8FAFC; font-weight: 600;">
+                                    <tr style="background: #F8FAFC; font-weight: 600; height: 40px;">
                                         <td colspan="6" style="text-align: right; padding-right: 16px;">Total</td>
+                                        <td id="tableTotalAmount">₹0.00</td>
                                         <td id="tableTotalDiscount">₹0.00</td>
                                         <td id="tableTotalFinalAmt">₹0.00</td>
                                         <td id="tableTotalTax">₹0.00</td>
@@ -325,11 +328,29 @@
 
                         <!-- Bottom Summary Grid -->
                         <div class="pi-summary-grid">
-                            <div class="pi-paid-amount">
-                                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Paid Amount</div>
-                                <div style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; width: 200px; height: 38px; background: #F8FAFC;">
-                                    <span style="padding: 0 12px; color: var(--text-muted); border-right: 1px solid var(--border-color);">₹</span>
-                                    <input type="number" id="paidAmount" value="0" style="border: none; background: transparent; padding: 0 12px; font-family: inherit; font-size: 14px; width: 100%; outline: none;">
+                            <div class="pi-left-section" style="flex: 1; display: flex; flex-direction: column; gap: 20px;">
+                                <div class="pi-paid-amount">
+                                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Paid Amount</div>
+                                    <div style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; width: 200px; height: 38px; background: #F8FAFC;">
+                                        <span style="padding: 0 12px; color: var(--text-muted); border-right: 1px solid var(--border-color);">₹</span>
+                                        <input type="number" id="paidAmount" value="0" style="border: none; background: transparent; padding: 0 12px; font-family: inherit; font-size: 14px; width: 100%; outline: none;">
+                                    </div>
+                                </div>
+                                
+                                <div class="pi-upload-document">
+                                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Upload Document</div>
+                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" id="documentUploadContainer">
+                                        <label style="display: flex; align-items: center; justify-content: center; width: 150px; height: 38px; border: 1px dashed #CBD5E1; border-radius: 6px; background: #F8FAFC; cursor: pointer; color: var(--text-muted); font-size: 14px;">
+                                            <i data-lucide="upload" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                                            <input type="file" id="documentUploadInput" accept="image/*,application/pdf" capture="environment" multiple style="display: none;">
+                                        </label>
+                                        <!-- uploaded documents will be appended here -->
+                                    </div>
+                                </div>
+
+                                <div class="pi-note">
+                                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Note</div>
+                                    <textarea id="piNote" class="custom-form-input" style="width: 100%; height: 80px; resize: none;"></textarea>
                                 </div>
                             </div>
                             
@@ -340,11 +361,11 @@
                                         <td class="amount-td" id="sumSubTotal">₹0.00</td>
                                     </tr>
                                     <tr>
-                                        <td style="display: flex; align-items: center; justify-content: space-between;">
-                                            <span>Discount</span>
-                                            <div class="discount-inputs">
+                                        <td>Discount</td>
+                                        <td class="amount-td">
+                                            <div class="discount-inputs" style="justify-content: flex-end;">
                                                 <div style="position: relative;">
-                                                    <input type="number" id="sumDiscountPercent" placeholder="0">
+                                                    <input type="number" id="sumDiscountPercent" placeholder="0" style="padding-right: 24px;">
                                                     <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--text-muted);">%</span>
                                                 </div>
                                                 <div style="position: relative;">
@@ -353,7 +374,6 @@
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="amount-td"></td>
                                     </tr>
                                     <tr>
                                         <td>After Discount</td>
@@ -479,11 +499,27 @@
 
     <!-- AI Loading Overlay -->
     <div id="aiLoadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.9); z-index: 2000; justify-content: center; align-items: center; flex-direction: column;">
-        <div style="width: 60px; height: 60px; border-radius: 50%; border: 4px solid #EEF2FF; border-top-color: #4338CA; animation: spin 1s linear infinite; margin-bottom: 24px;"></div>
-        <h3 style="font-size: 18px; font-weight: 600; color: var(--text-main); margin: 0 0 8px 0;">Analyzing Invoice...</h3>
+        <!-- Scanning Animation -->
+        <div class="scanner-container" style="position: relative; width: 72px; height: 96px; margin-bottom: 24px;">
+            <div style="width: 100%; height: 100%; background: white; border: 3px solid #CBD5E1; border-radius: 8px; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                <div style="position: absolute; top: 20px; left: 12px; right: 30px; height: 4px; background: #E2E8F0; border-radius: 2px;"></div>
+                <div style="position: absolute; top: 35px; left: 12px; right: 12px; height: 4px; background: #E2E8F0; border-radius: 2px;"></div>
+                <div style="position: absolute; top: 50px; left: 12px; right: 20px; height: 4px; background: #E2E8F0; border-radius: 2px;"></div>
+                <div style="position: absolute; top: 65px; left: 12px; right: 35px; height: 4px; background: #E2E8F0; border-radius: 2px;"></div>
+                <div style="position: absolute; top: 80px; left: 12px; right: 12px; height: 4px; background: #E2E8F0; border-radius: 2px;"></div>
+                <div class="scanner-laser" style="position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: #4338CA; box-shadow: 0 0 8px #4338CA, 0 4px 12px rgba(67, 56, 202, 0.4); opacity: 0.9;"></div>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; font-weight: 600; color: var(--text-main); margin: 0 0 8px 0;">Scanning Invoice...</h3>
         <p style="font-size: 14px; color: var(--text-muted); margin: 0;">Extracting items and calculating taxes</p>
         <style>
-            @keyframes spin { to { transform: rotate(360deg); } }
+            @keyframes scanLaser { 
+                0% { top: 0%; opacity: 0; }
+                15% { opacity: 1; }
+                85% { opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+            .scanner-laser { animation: scanLaser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
             .ai-option-card:hover { border-color: #4338CA !important; background: #F8FAFC; }
         </style>
     </div>

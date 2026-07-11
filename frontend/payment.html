@@ -3,51 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SPH Billing - Vendor</title>
+    <title>SPH Billing - Payment</title>
     <link rel="stylesheet" href="css/style.css?v=4">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        .vendor-stat-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 0;
-            padding: 16px;
-        }
-        .vendor-stat-card {
-            background: white;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            height: 70px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            box-sizing: border-box;
-        }
-        .vendor-stat-label {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-muted);
-            align-self: flex-start;
-        }
-        .vendor-stat-value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--text-main);
-            align-self: flex-end;
-        }
-        .value-red {
-            color: #EF4444;
-        }
         .vendor-controls {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
-            margin-bottom: 16px;
+            padding: 16px 24px;
+            margin-bottom: 0px;
         }
         .vendor-title {
             font-size: 18px;
@@ -56,7 +22,7 @@
             margin-right: 24px;
         }
         .vendor-table-container {
-            margin: 0 16px 16px 16px;
+            margin: 0 24px 24px 24px;
             background: white;
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -69,9 +35,9 @@
         }
         .vendor-table th {
             background-color: #F8FAFC;
-            padding: 10px 12px;
+            padding: 12px 16px;
             text-align: left;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
             color: var(--text-muted);
             border-bottom: 1px solid var(--border-color);
@@ -81,8 +47,8 @@
             border-right: none;
         }
         .vendor-table td {
-            padding: 10px 12px;
-            font-size: 13px;
+            padding: 12px 16px;
+            font-size: 14px;
             color: var(--text-main);
             border-bottom: 1px solid var(--border-color);
             border-right: 1px solid var(--border-color);
@@ -91,12 +57,12 @@
         .vendor-table td:last-child {
             border-right: none;
         }
-        .vendor-link {
+        .payment-link {
             color: #2563EB;
             text-decoration: none;
             font-weight: 500;
         }
-        .vendor-link:hover {
+        .payment-link:hover {
             text-decoration: underline;
         }
     </style>
@@ -151,54 +117,42 @@
             <!-- Tabs -->
             <div class="page-tabs" style="padding: 0 24px 0 0; border-bottom: 1px solid var(--border-color); background-color: white;">
                 <a href="vendor.html" class="tab">Vendor</a>
-                <a href="purchase-invoice.html" class="tab active">Purchase Invoice</a>
+                <a href="purchase-invoice.html" class="tab">Purchase Invoice</a>
                 <a href="#" class="tab">Purchase Return</a>
-                <a href="payment.html" class="tab">Payment</a>
-            </div>
-
-            <!-- Score Cards -->
-            <div class="vendor-stat-cards" style="grid-template-columns: repeat(2, 1fr);">
-                <div class="vendor-stat-card" style="background: white; border: 1.5px solid #000B58; border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <span class="vendor-stat-label" style="font-size: 13px; font-weight: 500; color: var(--text-muted); align-self: flex-start;">Purchase Amount</span>
-                    <span class="vendor-stat-value" id="statPurchaseAmount" style="font-size: 20px; font-weight: 700; color: #000B58; align-self: flex-end; text-align: right;">₹0.00</span>
-                </div>
-                <div class="vendor-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; justify-content: space-between; height: 70px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <span class="vendor-stat-label" style="font-size: 13px; font-weight: 500; color: var(--text-muted); align-self: flex-start;">Pending to Pay</span>
-                    <span class="vendor-stat-value value-red" id="statPendingToPay" style="font-size: 20px; font-weight: 700; color: #EF4444; align-self: flex-end; text-align: right;">₹0.00</span>
-                </div>
+                <a href="payment.html" class="tab active">Payment</a>
             </div>
 
             <!-- Controls (Search, Export, Create) -->
             <div class="vendor-controls">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <h2 class="vendor-title" style="margin-right: 0;">Purchase Invoice</h2>
+                    <h2 class="vendor-title" style="margin-right: 0;">Payment</h2>
                     
                     <!-- Date Filter Button -->
-                    <button class="date-filter-btn" id="piDateFilterBtn" data-target="piList" style="background-color: white; font-size: 13px; border-radius: 6px; height: 38px; border: 1px solid var(--border-color); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; min-width: 110px; font-family: inherit;">
-                        <span class="date-filter-text" id="piDateFilterText">Date</span>
+                    <button class="date-filter-btn" id="paymentDateFilterBtn" data-target="paymentList" style="background-color: white; font-size: 13px; border-radius: 6px; height: 38px; border: 1px solid var(--border-color); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; min-width: 110px; font-family: inherit;">
+                        <span class="date-filter-text" id="paymentDateFilterText">Date</span>
                         <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                     </button>
 
                     <!-- Vendor Name Dropdown Filter -->
-                    <div class="custom-dropdown" id="piVendorFilterDropdown" data-select="piVendorFilter" style="min-width: 130px; width: 130px; height: 38px; position: relative; z-index: 100;">
-                        <select id="piVendorFilter" style="display:none;">
+                    <div class="custom-dropdown" id="paymentVendorFilterDropdown" data-select="paymentVendorFilter" style="min-width: 160px; width: 160px; height: 38px; position: relative; z-index: 100;">
+                        <select id="paymentVendorFilter" style="display:none;">
                             <option value="">Vendor Name</option>
                         </select>
                         <div class="custom-dropdown-trigger" style="height: 100%; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: white; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 13px; font-weight: 500;">
                             <span class="trigger-text placeholder">Vendor Name</span>
-                            <svg class="trigger-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                         </div>
                         <div class="custom-dropdown-panel" style="min-width: 100%; right: 0;"></div>
                     </div>
 
                     <!-- Search Bar -->
                     <div style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; background: white; height: 38px; width: 220px; padding: 0 12px; box-sizing: border-box;">
-                        <input type="text" id="piSearchInput" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 13px; width: 100%;">
+                        <input type="text" id="paymentSearchInput" placeholder="Search" style="border: none; outline: none; font-family: inherit; font-size: 13px; width: 100%;">
                         <i data-lucide="search" style="width: 14px; height: 14px; color: var(--text-muted); margin-left: 8px;"></i>
                     </div>
 
                     <!-- Cancel Button [ x ] -->
-                    <button id="clearPiFilterBtn" style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 38px; width: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
+                    <button id="clearPaymentFilterBtn" style="background: white; border: 1px solid var(--border-color); border-radius: 6px; height: 38px; width: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; box-sizing: border-box;">
                         <i data-lucide="x" style="width: 16px; height: 16px;"></i>
                     </button>
                 </div>
@@ -213,7 +167,7 @@
                     </div>
 
                     <!-- Create Button -->
-                    <a href="create-purchase-invoice.html" style="text-decoration: none; height: 38px; padding: 0 20px; border: none; border-radius: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; background: #000B58; cursor: pointer; color: white; font-weight: 600; box-sizing: border-box; font-family: inherit;">
+                    <a href="create-payment.html" style="text-decoration: none; height: 38px; padding: 0 20px; border: none; border-radius: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; background: #000B58; cursor: pointer; color: white; font-weight: 600; box-sizing: border-box; font-family: inherit;">
                         <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
                         <span>Create</span>
                     </a>
@@ -225,21 +179,19 @@
                 <table class="vendor-table">
                     <thead>
                         <tr style="height: 40px;">
-                            <th style="width: 70px; text-align: left;">S. No.</th>
-                            <th style="width: 120px; text-align: left;">Date</th>
-                            <th style="width: 120px; text-align: left;">Due Date</th>
-                            <th style="width: 120px; text-align: left;">PI No</th>
-                            <th style="width: 250px; text-align: left;">Vendor Name</th>
-                            <th style="width: 180px; text-align: left;">Invoice Amount</th>
-                            <th style="width: 150px; text-align: left;">Pending</th>
-                            <th style="width: 120px; text-align: left;">Status</th>
+                            <th style="width: 70px;">S. No.</th>
+                            <th style="width: 120px;">Date</th>
+                            <th style="width: 150px;">Payment No</th>
+                            <th style="width: 250px;">Vendor Name</th>
+                            <th style="width: 200px;">Contact Number</th>
+                            <th style="width: 150px;">Paid Amount</th>
                         </tr>
                     </thead>
-                    <tbody id="piTableBody">
+                    <tbody id="paymentTableBody">
                         <!-- Empty State -->
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 32px; color: var(--text-muted);">
-                                No purchase invoices available.
+                            <td colspan="6" style="text-align: center; padding: 32px; color: var(--text-muted);">
+                                Loading payments...
                             </td>
                         </tr>
                     </tbody>
@@ -278,7 +230,7 @@
 
     <script src="js/script.js"></script>
     <script src="js/date-filter.js?v=2"></script>
-    <script src="js/purchase-invoice.js?v=6"></script>
+    <script src="js/payment.js?v=1"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             if (window.lucide) {

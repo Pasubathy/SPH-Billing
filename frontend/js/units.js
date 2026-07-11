@@ -5,7 +5,12 @@ let deleteIndex = -1;
 async function loadUnits() {
     try {
         const res = await fetch('/api/units');
-        units = await res.json();
+        const rawUnits = await res.json();
+        units = rawUnits.map(u => ({
+            name: u.name,
+            shortName: u.unitPrefix || '',
+            allowDecimal: u.acceptDecimal ? 'Yes' : 'No'
+        }));
     } catch (err) {
         console.error('Error loading units:', err);
         units = [];
@@ -17,10 +22,15 @@ async function loadUnits() {
 async function saveUnits(silent = false) {
     updateUnitsFromDOM();
     try {
+        const payload = units.map(u => ({
+            name: u.name,
+            unitPrefix: u.shortName,
+            acceptDecimal: u.allowDecimal === 'Yes'
+        }));
         const res = await fetch('/api/units', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(units)
+            body: JSON.stringify(payload)
         });
         const result = await res.json();
         if (result.success && !silent) {

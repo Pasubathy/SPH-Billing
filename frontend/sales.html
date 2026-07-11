@@ -313,6 +313,72 @@
 
             </div>
 
+            <!-- View Layout Content Wrapper -->
+            <style>
+                .inv-preview-container { background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 24px; font-family: 'Inter', sans-serif; font-size: 10px; color: #000; transition: all 0.3s ease; margin: 0 auto; width: 100%; box-sizing: border-box; }
+                .inv-preview-container .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 12px; margin-bottom: 8px; position: relative; }
+                .inv-preview-container .comp-name { font-size: 1.4em; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; }
+                .inv-preview-container .comp-detail { font-size: 0.9em; line-height: 1.4; color: #000; }
+                .inv-preview-container .table-header { display: flex; font-weight: 600; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; font-size: 0.9em; }
+                .inv-preview-container .table-row { display: flex; margin-bottom: 4px; font-size: 0.9em; }
+                .inv-preview-container .totals-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.9em; }
+                .inv-preview-container .grand-total { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; font-size: 1em; font-weight: 700; margin-bottom: 8px; }
+            </style>
+            <div id="viewSalesWorkspace" class="view-sales-workspace" style="display: none; flex: 1; flex-direction: column; overflow: hidden; background-color: #F8FAFC;">
+                <!-- Page Header -->
+                <div class="page-header" style="height: 45px; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button id="viewSalesBackHeaderBtn" style="color: #000B58; background: none; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;">
+                            <i data-lucide="arrow-left" style="width: 20px; height: 20px; stroke-width: 2.5;"></i>
+                        </button>
+                        <h1 class="page-title" id="viewSalesHeaderTitle" style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-main);">INV001</h1>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="icon-btn-danger" id="viewSalesDeleteBtn" style="background-color: #FEE2E2; border: 1px solid #FCA5A5; color: #EF4444; width: 32px; height: 32px; padding: 0; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="icon-btn-outline" id="viewSalesEditBtn" style="background-color: white; border: 1px solid var(--border-color); color: var(--text-main); width: 32px; height: 32px; padding: 0; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- View Layout -->
+                <div style="display: flex; gap: 16px; padding: 16px; height: calc(100vh - 140px); overflow: hidden;">
+                    <!-- Left Sidebar (Invoice List) -->
+                    <div class="products-sidebar-left" style="width: 240px; min-width: 180px; background-color: white; border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden;">
+                        <div style="padding: 12px 12px 0px 12px; position: sticky; top: 0; z-index: 10; background-color: white;">
+                            <input type="text" id="viewSalesSearchInput" placeholder="Search Customer / INV No" style="width: 100%; height: 38px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: #F8F9FA; outline: none; font-family: inherit; font-size: 14px; box-sizing: border-box;">
+                        </div>
+                        <div id="viewSalesInvoiceList" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Cards will be populated by JS -->
+                        </div>
+                    </div>
+                    
+                    <!-- Right Main Area (Preview) -->
+                    <div class="details-viewer-right" style="flex: 1; background: #F1F5F9; border: 1px solid var(--border-color); border-radius: 8px; overflow-y: auto; display: flex; justify-content: center; align-items: flex-start; padding: 40px; box-sizing: border-box;">
+                        <div id="viewSalesPreviewContainer" style="width: 100%; display: flex; justify-content: center; transition: max-width 0.3s ease;">
+                            <!-- Preview HTML goes here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Action Footer -->
+                <div class="sticky-action-bar-new" style="justify-content: space-between;">
+                    <button id="viewSalesBackFooterBtn" class="btn-footer-outline" style="display: flex; align-items: center; gap: 6px; background: white; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 16px; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text-main); cursor: pointer;">
+                        <i data-lucide="chevron-left" style="width: 16px; height: 16px; margin-right: 4px; stroke-width: 2.5;"></i> Back
+                    </button>
+                    <div style="display: flex; gap: 12px;">
+                        <button id="viewSalesExportBtn" style="background: white; border: 1px solid #000B58; border-radius: 6px; padding: 8px 24px; font-family: inherit; font-size: 14px; font-weight: 500; color: #000B58; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            Export
+                        </button>
+                        <button id="viewSalesPrintBtn" style="background: #000B58; border: none; border-radius: 6px; padding: 8px 24px; font-family: inherit; font-size: 14px; font-weight: 500; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="printer" style="width: 18px; height: 18px;"></i> Print
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Customer Workspace -->
             <div id="customerWorkspace" class="customer-workspace" style="display: none; flex: 1; flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; background-color: #F8FAFC;">
                 
@@ -740,6 +806,18 @@
                 <button id="modalCustSaveBtn" class="btn-customer-save" style="background: #000B58; border: none; border-radius: 6px; padding: 8px 24px; font-family: inherit; font-size: 14px; font-weight: 500; color: white; cursor: pointer; transition: all 0.2s;">
                     Save
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Sales Modal -->
+    <div class="modal-overlay" id="deleteSalesModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); z-index: 2000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 8px; width: 400px; max-width: 90%; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);">
+            <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text-main);">Delete Sales Invoice</div>
+            <p style="color: var(--text-muted); font-size: 14px; margin: 0 0 24px 0;">Are you sure you want to delete this invoice? This action cannot be undone.</p>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="cancelSalesDeleteBtn" style="background: white; border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-family: inherit; font-weight: 500; color: var(--text-main);">No, Cancel</button>
+                <button id="confirmSalesDeleteBtn" style="background: #EF4444; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-family: inherit; font-weight: 500;">Yes, Delete</button>
             </div>
         </div>
     </div>

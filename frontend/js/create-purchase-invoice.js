@@ -20,6 +20,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         piItemsBody: document.getElementById('piItemsBody'),
         paidAmount: document.getElementById('paidAmount'),
         
+        gstinNo: document.getElementById('gstinNo'),
+        panNo: document.getElementById('panNo'),
+        piNote: document.getElementById('piNote'),
+        documentUploadInput: document.getElementById('documentUploadInput'),
+        documentUploadContainer: document.getElementById('documentUploadContainer'),
+        
         // Summary elements
         sumSubTotal: document.getElementById('sumSubTotal'),
         sumDiscountPercent: document.getElementById('sumDiscountPercent'),
@@ -65,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     populateVendorDropdown();
+    renderTable();
 
     // Vendor Selection Logic
     dom.vendorSelect.addEventListener('change', (e) => {
@@ -81,9 +88,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             dom.billAddress.value = bAddr || 'No billing address provided';
             dom.shipAddress.value = sAddr || 'No shipping address provided';
             dom.shipAddress.readOnly = true; // lock it again
+
+            dom.gstinNo.value = v.gstin || '';
+            dom.panNo.value = v.panNumber || '';
         } else {
             dom.billAddress.value = '';
             dom.shipAddress.value = '';
+            dom.gstinNo.value = '';
+            dom.panNo.value = '';
         }
     });
 
@@ -96,6 +108,67 @@ document.addEventListener('DOMContentLoaded', async () => {
                 dom.shipAddress.focus();
                 dom.shipAddress.value = ''; // clear it for new entry
             }
+        });
+    }
+
+    // Document Upload Logic
+    let uploadedDocuments = [];
+    let docCounter = 1;
+
+    if (dom.documentUploadInput) {
+        dom.documentUploadInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            files.forEach(file => {
+                const docId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+                uploadedDocuments.push({
+                    id: docId,
+                    file: file,
+                    srNo: docCounter++
+                });
+            });
+            
+            renderUploadedDocuments();
+            // Reset input so the same file can be selected again if removed
+            dom.documentUploadInput.value = '';
+        });
+    }
+
+    function renderUploadedDocuments() {
+        // Keep only the label, remove existing badges
+        const badges = dom.documentUploadContainer.querySelectorAll('.uploaded-doc-badge');
+        badges.forEach(b => b.remove());
+
+        uploadedDocuments.forEach(doc => {
+            const badge = document.createElement('div');
+            badge.className = 'uploaded-doc-badge';
+            badge.style.cssText = 'display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 4px; font-size: 13px;';
+            
+            // create object URL for preview/link
+            const url = URL.createObjectURL(doc.file);
+
+            badge.innerHTML = `
+                <a href="${url}" target="_blank" style="color: var(--text-main); text-decoration: none; font-weight: 500;">${doc.srNo}</a>
+                <button type="button" class="remove-doc-btn" data-id="${doc.id}" style="border: none; background: none; padding: 0; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; margin-left: 4px;">
+                    <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+                </button>
+            `;
+            
+            dom.documentUploadContainer.appendChild(badge);
+        });
+
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+        // Bind remove events
+        dom.documentUploadContainer.querySelectorAll('.remove-doc-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                uploadedDocuments = uploadedDocuments.filter(d => d.id !== id);
+                renderUploadedDocuments();
+            });
         });
     }
 
@@ -135,7 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             dom.itemSearchDropdown.innerHTML = matches.map(item => `
                 <div class="search-dropdown-item" data-code="${item.code}">
                     <div><span style="font-weight: 500;">${item.name}</span> <span style="color:var(--text-muted); font-size:12px;">(${item.code})</span></div>
-                    <div style="font-weight: 500;">₹${parseFloat(item.purchasePrice || 0).toFixed(2)}</div>
+                    <div style="font-weight: 500;">${item.stock || 0} / ${item.unit || 'Unit'}</div>
                 </div>
             `).join('');
             dom.itemSearchDropdown.classList.add('show');
@@ -278,47 +351,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         let tTax = 0;
         let tGrand = 0;
 
-        piItems.forEach((row, idx) => {
-            const amount = row.rate * row.qty;
-            const finalAmt = amount - row.discount;
-            const taxAmt = finalAmt * (row.taxRate / 100);
-            const totalAmt = finalAmt + taxAmt;
-
-            tAmt += amount;
-            tDisc += row.discount;
-            tFinal += finalAmt;
-            tTax += taxAmt;
-            tGrand += totalAmt;
-
+        if (piItems.length === 0) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${idx + 1}</td>
-                <td><div style="font-weight:500;">${row.name}</div><div style="font-size:11px; color:var(--text-muted);">${row.code}</div></td>
-                <td><input type="text" value="${row.hsn}" class="custom-form-input hsn-input" data-id="${row.id}"></td>
-                <td><input type="number" value="${row.qty}" class="custom-form-input qty-input" data-id="${row.id}" min="1"></td>
-                <td>
-                    <select class="custom-form-input unit-input" data-id="${row.id}">
-                        ${row.unitsOptions.map(u => `<option value="${u}" ${u===row.unit?'selected':''}>${u}</option>`).join('')}
-                    </select>
-                </td>
-                <td><input type="number" value="${row.rate}" class="custom-form-input rate-input amount-input" data-id="${row.id}"></td>
-                <td><input type="number" value="${row.discount}" class="custom-form-input disc-input amount-input" data-id="${row.id}"></td>
-                <td class="cell-readonly" style="text-align: left;">₹${finalAmt.toFixed(2)}</td>
-                <td>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <input type="number" value="${row.taxRate}" class="custom-form-input tax-input amount-input" data-id="${row.id}" style="width: 50px; padding: 0 8px;">%
-                    </div>
-                    <div class="cell-readonly" style="text-align:left; font-size:11px; margin-top:2px;">₹${taxAmt.toFixed(2)}</div>
-                </td>
-                <td class="cell-readonly" style="text-align: left; font-weight: 500;">₹${totalAmt.toFixed(2)}</td>
-                <td>
-                    <button class="btn-delete-row delete-btn-table" data-id="${row.id}">
-                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                    </button>
+                <td colspan="12" style="text-align: center; color: var(--text-muted); height: 40px; font-style: italic;">
+                    No items added yet. Search or scan a tag to add items.
                 </td>
             `;
             dom.piItemsBody.appendChild(tr);
-        });
+        } else {
+            piItems.forEach((row, idx) => {
+                const amount = row.rate * row.qty;
+                const finalAmt = amount - row.discount;
+                const taxAmt = finalAmt * (row.taxRate / 100);
+                const totalAmt = finalAmt + taxAmt;
+
+                tAmt += amount;
+                tDisc += row.discount;
+                tFinal += finalAmt;
+                tTax += taxAmt;
+                tGrand += totalAmt;
+
+                const isNewBadge = row.isNew ? `<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#22C55E; margin-left:6px;" title="New Item detected by AI"></span>` : '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td>
+                        <div class="map-item-btn" data-id="${row.id}" style="font-weight:500; cursor: pointer; display: flex; align-items: center;" title="Click to map to existing item">${row.name}${isNewBadge}</div>
+                        <div style="font-size:11px; color:var(--text-muted);">${row.code}</div>
+                    </td>
+                    <td><input type="text" value="${row.hsn}" class="custom-form-input hsn-input" data-id="${row.id}"></td>
+                    <td><input type="number" value="${row.qty}" class="custom-form-input qty-input" data-id="${row.id}" min="1"></td>
+                    <td>
+                        <select class="custom-form-input unit-input" data-id="${row.id}">
+                            ${row.unitsOptions.map(u => `<option value="${u}" ${u===row.unit?'selected':''}>${u}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td><input type="number" value="${row.rate}" class="custom-form-input rate-input amount-input" data-id="${row.id}"></td>
+                    <td class="cell-readonly" style="text-align: left;">₹${amount.toFixed(2)}</td>
+                    <td><input type="number" value="${row.discount}" class="custom-form-input disc-input amount-input" data-id="${row.id}"></td>
+                    <td class="cell-readonly" style="text-align: left;">₹${finalAmt.toFixed(2)}</td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <input type="number" value="${row.taxRate}" class="custom-form-input tax-input amount-input" data-id="${row.id}" style="width: 50px; padding: 0 8px;">%
+                        </div>
+                        <div class="cell-readonly" style="text-align:left; font-size:11px; margin-top:2px;">₹${taxAmt.toFixed(2)}</div>
+                    </td>
+                    <td class="cell-readonly" style="text-align: left; font-weight: 500;">₹${totalAmt.toFixed(2)}</td>
+                    <td>
+                        <button class="btn-delete-row delete-btn-table" data-id="${row.id}">
+                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </td>
+                `;
+                dom.piItemsBody.appendChild(tr);
+            });
+        }
 
         if (window.lucide) lucide.createIcons();
 
@@ -348,8 +436,74 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
+        // Map Item Inline Search
+        document.querySelectorAll('.map-item-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                const row = piItems.find(r => r.id === id);
+                if (!row) return;
+
+                const cell = e.currentTarget.parentElement;
+                cell.innerHTML = `
+                    <div style="position: relative;">
+                        <input type="text" class="custom-form-input item-map-search" placeholder="Search item..." style="width: 100%; font-size: 12px; height: 30px;" value="${row.name}">
+                        <div class="item-map-dropdown" style="position: absolute; top: 100%; left: 0; width: 250px; background: white; border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; max-height: 200px; overflow-y: auto; display: none;"></div>
+                    </div>
+                `;
+                
+                const input = cell.querySelector('.item-map-search');
+                const dropdown = cell.querySelector('.item-map-dropdown');
+                
+                input.focus();
+                
+                input.addEventListener('input', (ev) => {
+                    const q = ev.target.value.toLowerCase().trim();
+                    if (!q) { dropdown.style.display = 'none'; return; }
+                    
+                    const matches = allItems.filter(i => 
+                        (i.name && i.name.toLowerCase().includes(q)) || 
+                        (i.code && String(i.code).toLowerCase().includes(q))
+                    ).slice(0, 10);
+                    
+                    if (matches.length > 0) {
+                        dropdown.innerHTML = matches.map(item => `
+                            <div class="map-dropdown-item" data-code="${item.code}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                                <div><div style="font-weight: 500; font-size: 13px;">${item.name}</div><div style="font-size: 11px; color: var(--text-muted);">${item.code}</div></div>
+                                <div style="font-weight: 500; font-size: 12px;">${item.stock || 0} / ${item.unit || 'Unit'}</div>
+                            </div>
+                        `).join('');
+                        dropdown.style.display = 'block';
+                        
+                        dropdown.querySelectorAll('.map-dropdown-item').forEach(opt => {
+                            opt.addEventListener('mousedown', (eClick) => {
+                                eClick.preventDefault(); // prevent blur
+                                const code = opt.getAttribute('data-code');
+                                const matched = allItems.find(i => String(i.code) === String(code));
+                                if (matched) {
+                                    row.code = matched.code;
+                                    row.name = matched.name;
+                                    row.hsn = matched.hsn || row.hsn;
+                                    row.unit = matched.unit || row.unit;
+                                    row.isNew = false;
+                                    renderTable();
+                                }
+                            });
+                        });
+                    } else {
+                        dropdown.style.display = 'none';
+                    }
+                });
+                
+                input.addEventListener('blur', () => {
+                    setTimeout(() => {
+                        if (piItems.find(r => r.id === id)) renderTable();
+                    }, 150);
+                });
+            });
+        });
+
         // Update footer totals
-        // dom.tableTotalAmount.textContent = `₹${tAmt.toFixed(2)}`;
+        dom.tableTotalAmount.textContent = `₹${tAmt.toFixed(2)}`;
         dom.tableTotalDiscount.textContent = `₹${tDisc.toFixed(2)}`;
         dom.tableTotalFinalAmt.textContent = `₹${tFinal.toFixed(2)}`;
         dom.tableTotalTax.textContent = `₹${tTax.toFixed(2)}`;
@@ -527,11 +681,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         dom.saveAddPiBtn.innerHTML = 'Saving...';
         dom.saveAddPiBtn.disabled = true;
 
-        const vendorId = dom.vendorSelect.value;
-        const vendor = vendors.find(v => String(v.id) === String(vendorId));
-        
         const gTotalStr = dom.sumGrandTotal.textContent.replace('₹', '').replace(/,/g, '');
         const grandTotal = parseFloat(gTotalStr) || 0;
+        
+        let vendorId = dom.vendorSelect.value;
+        let vendor = vendors.find(v => String(v.id) === String(vendorId));
+        let createdNewVendor = false;
+        
+        if (vendorId === 'NEW_VENDOR_TEMP') {
+            const newVendorName = dom.vendorSelect.options[dom.vendorSelect.selectedIndex].text;
+            vendor = {
+                id: Date.now().toString(),
+                vendorName: newVendorName,
+                gstin: dom.gstinNo.value,
+                panNumber: dom.panNo.value,
+                billAddress: dom.billAddress.value,
+                pendingToPay: 0,
+                transactions: []
+            };
+            vendors.push(vendor);
+            vendorId = vendor.id;
+            createdNewVendor = true;
+        }
+        
         
         const paid = parseFloat(dom.paidAmount.value) || 0;
         const pendingToPay = grandTotal - paid;
@@ -554,31 +726,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             totalTax: parseFloat(dom.sumSGST.textContent.replace('₹','')) * 2,
             amount: grandTotal,
             paidAmount: paid,
-            pendingToPay: pendingToPay
+            pendingToPay: pendingToPay,
+            note: dom.piNote.value
         };
 
         try {
-            // 1. Fetch current PIs and add new one
-            const piRes = await fetch(`/api/purchase-invoices?t=${Date.now()}`);
-            const invoices = await piRes.json();
-            invoices.push(piData);
-            await fetch('/api/purchase-invoices', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(invoices)
-            });
-
-            // 2. Increment Counter
-            await fetch('/api/pi-counter', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ counter: currentPiCounter + 1 })
-            });
-
-            // 3. Update Vendor pending payment
+            // 1. Update Vendor and Create New Vendor First (to satisfy Foreign Key constraint)
             if (vendor) {
                 vendor.pendingToPay = (parseFloat(vendor.pendingToPay) || 0) + pendingToPay;
-                // Add transaction to vendor
                 if (!vendor.transactions) vendor.transactions = [];
                 vendor.transactions.push({
                     id: Date.now().toString(),
@@ -590,42 +745,100 @@ document.addEventListener('DOMContentLoaded', async () => {
                     status: pendingToPay > 0 ? 'Unpaid' : 'Paid'
                 });
                 
-                await fetch('/api/vendors', {
+                const vendorRes = await fetch('/api/vendors', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(vendors)
                 });
+                if (!vendorRes.ok) throw new Error('Failed to save vendor');
             }
 
-            // 4. Update Item Stock/Prices (optional, usually purchases increase stock)
+            // 2. Update Item Stock/Prices and Create New Items
+            let createdNewItems = 0;
             for (let r of piItems) {
-                const idx = allItems.findIndex(i => String(i.code) === String(r.code));
-                if (idx > -1) {
-                    allItems[idx].stock = (parseFloat(allItems[idx].stock) || 0) + r.qty;
-                    allItems[idx].purchasePrice = r.rate; // update purchase price to latest
+                if (r.isNew || r.code === 'AI-TEMP') {
+                    const newItemCode = 'ITM' + Math.floor(1000 + Math.random() * 9000);
+                    const newItem = {
+                        id: Date.now().toString() + Math.random().toString(36).substr(2,5),
+                        code: newItemCode,
+                        name: r.name,
+                        hsn: r.hsn || '',
+                        unit: r.unit || 'Nos',
+                        purchasePrice: r.rate,
+                        sellingPrice: r.rate, // default to purchase rate
+                        stock: r.qty
+                    };
+                    allItems.push(newItem);
+                    r.code = newItemCode; // update invoice row code
+                    r.isNew = false;
+                    createdNewItems++;
+                } else {
+                    const idx = allItems.findIndex(i => String(i.code) === String(r.code));
+                    if (idx > -1) {
+                        allItems[idx].stock = (parseFloat(allItems[idx].stock) || 0) + r.qty;
+                        allItems[idx].purchasePrice = r.rate; // update purchase price to latest
+                    }
                 }
             }
-            await fetch('/api/items', {
+            const itemRes = await fetch('/api/items', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(allItems)
             });
+            if (!itemRes.ok) throw new Error('Failed to save items');
+
+            // 3. Fetch current PIs, add new one, and Save PI
+            const piRes = await fetch(`/api/purchase-invoices?t=${Date.now()}`);
+            if (!piRes.ok) throw new Error('Failed to fetch purchase invoices');
+            const invoices = await piRes.json();
+            invoices.push(piData);
+            
+            const saveRes = await fetch('/api/purchase-invoices', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(invoices)
+            });
+            if (!saveRes.ok) {
+                const errData = await saveRes.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP error ${saveRes.status}`);
+            }
+
+            // 4. Increment Counter
+            await fetch('/api/pi-counter', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ counter: currentPiCounter + 1 })
+            });
+            
+            // Build Success Message
+            let successMsg = "Saved Successfully!";
+            if (createdNewVendor && createdNewItems > 0) {
+                successMsg = `Saved successfully! New vendor and ${createdNewItems} new item(s) automatically created.`;
+            } else if (createdNewVendor) {
+                successMsg = `Saved successfully! New vendor automatically created.`;
+            } else if (createdNewItems > 0) {
+                successMsg = `Saved successfully! ${createdNewItems} new item(s) automatically created.`;
+            }
 
             if (stayOnPage) {
                 dom.savePiBtn.innerHTML = originalBtnText;
                 dom.savePiBtn.disabled = false;
                 dom.saveAddPiBtn.innerHTML = originalAddBtnText;
                 dom.saveAddPiBtn.disabled = false;
-                alert("Saved Successfully!");
-                location.reload();
+                if (window.showToast) showToast(successMsg, 'success');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                alert("Saved Successfully!");
-                window.location.href = 'purchase-invoice.html';
+                if (window.showToast) showToast(successMsg, 'success');
+                setTimeout(() => window.location.href = 'purchase-invoice.html', 1500);
             }
 
         } catch (e) {
             console.error("Error saving PI:", e);
-            alert("Error saving Purchase Invoice");
+            if (window.showToast) {
+                showToast(`Error: ${e.message}`, "error");
+            } else {
+                alert(`Error: ${e.message}`);
+            }
             dom.savePiBtn.innerHTML = originalBtnText;
             dom.savePiBtn.disabled = false;
             dom.saveAddPiBtn.innerHTML = originalAddBtnText;
@@ -780,7 +993,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (wrapper) {
                     const triggerText = wrapper.querySelector('.trigger-text');
                     if (triggerText) {
-                        triggerText.textContent = dom.vendorSelect.options[dom.vendorSelect.selectedIndex].text;
+                        triggerText.innerHTML = dom.vendorSelect.options[dom.vendorSelect.selectedIndex].text;
                         triggerText.classList.remove('placeholder');
                     }
                 }
@@ -788,8 +1001,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Trigger change to load addresses
                 dom.vendorSelect.dispatchEvent(new Event('change')); 
             } else {
-                alert(`New Vendor Detected: "${data.vendor.name}". Please map manually or create a new vendor.`);
+                // New Vendor - Show badge
+                const wrapper = dom.vendorSelect.closest('.custom-dropdown');
+                if (wrapper) {
+                    const triggerText = wrapper.querySelector('.trigger-text');
+                    if (triggerText) {
+                        triggerText.innerHTML = `${data.vendor.name} <span style="background: #22C55E; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px;">New</span>`;
+                        triggerText.classList.remove('placeholder');
+                    }
+                }
+                dom.vendorSelect.innerHTML += `<option value="NEW_VENDOR_TEMP">${data.vendor.name}</option>`;
+                dom.vendorSelect.value = "NEW_VENDOR_TEMP";
                 if (data.vendor.address) dom.billAddress.value = data.vendor.address;
+                if (data.vendor.gstin) dom.gstinNo.value = data.vendor.gstin;
             }
         }
 
@@ -820,7 +1044,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     rate: aiItem.rate || 0,
                     discount: aiItem.discount || 0,
                     taxRate: aiItem.taxPercent || 0,
-                    unitsOptions: [aiItem.unit || 'Nos']
+                    unitsOptions: [aiItem.unit || 'Nos'],
+                    isNew: !matchedItem
                 });
             });
             

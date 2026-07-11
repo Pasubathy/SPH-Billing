@@ -1,4 +1,4 @@
-﻿let items = [];
+let items = [];
 let categories = [];
 let units = [];
 let currentView = 'grid'; // 'list' or 'grid' by default
@@ -260,6 +260,12 @@ function renderItems(searchVal = '', selectedCategory = '') {
 
     let displayCount = 1;
 
+    function getShortUnitName(unitName) {
+        if (!unitName) return 'Unit';
+        const found = units.find(u => u.name === unitName || u.unitPrefix === unitName);
+        return found ? (found.unitPrefix || found.name) : unitName;
+    }
+
     items.forEach((item) => {
         // Search Filter: matches Code or Item Name
         const matchesSearch = !searchVal || 
@@ -272,6 +278,7 @@ function renderItems(searchVal = '', selectedCategory = '') {
         if (matchesSearch && matchesCategory) {
             const pPrice = parseFloat(item.purchasePrice !== undefined ? item.purchasePrice : item.purchaseAmount) || 0;
             const sPrice = parseFloat(item.sellingPrice !== undefined ? item.sellingPrice : item.sellingAmount) || 0;
+            const shortUnit = getShortUnitName(item.unit);
             
             // Check for image thumbnail
             let thumbnailHtml = '<i data-lucide="package" style="width: 24px; height: 24px; color: white;"></i>';
@@ -304,7 +311,7 @@ function renderItems(searchVal = '', selectedCategory = '') {
                     <div class="vertical-divider"></div>
                     <div class="col-item-stock">${item.stock}</div>
                     <div class="vertical-divider"></div>
-                    <div class="col-item-unit">${item.unit}</div>
+                    <div class="col-item-unit">${shortUnit}</div>
                     <div class="vertical-divider"></div>
                     <div class="col-item-pprice">₹${pPrice.toFixed(2)}</div>
                     <div class="vertical-divider"></div>
@@ -316,10 +323,11 @@ function renderItems(searchVal = '', selectedCategory = '') {
                 let conversionHtml = '';
                 if (item.conversions && item.conversions.length > 0) {
                     const firstConv = item.conversions[0];
+                    const cShortUnit = getShortUnitName(firstConv.unit);
                     conversionHtml = `
                         <div class="item-card-price-col" style="border-left: 1px solid var(--border-color); padding-left: 16px;">
                             <span class="item-card-price-val">₹${parseFloat(firstConv.price).toFixed(2)}</span>
-                            <span class="item-card-price-unit">/ ${firstConv.unit}</span>
+                            <span class="item-card-price-unit">/ ${cShortUnit}</span>
                         </div>
                     `;
                 }
@@ -336,7 +344,7 @@ function renderItems(searchVal = '', selectedCategory = '') {
                             <div class="item-card-code">${item.code}</div>
                             <div class="item-card-name"><a href="view-item.html?code=${item.code}" style="text-decoration: none; color: inherit;">${item.name}</a></div>
                             <div class="item-card-category">${item.category}</div>
-                            <div class="item-card-purchase">₹${pPrice} / ${item.unit}</div>
+                            <div class="item-card-purchase">${item.stock || 0} / ${shortUnit}</div>
                         </div>
                     </div>
                     <div class="item-card-bottom">
@@ -344,7 +352,7 @@ function renderItems(searchVal = '', selectedCategory = '') {
                         <div class="item-card-prices">
                             <div class="item-card-price-col">
                                 <span class="item-card-price-val">₹${sPrice.toFixed(2)}</span>
-                                <span class="item-card-price-unit">/ ${item.unit}</span>
+                                <span class="item-card-price-unit">/ ${shortUnit}</span>
                             </div>
                             ${conversionHtml}
                         </div>

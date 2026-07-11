@@ -84,10 +84,10 @@ function populateDropdowns() {
     unitSelect.innerHTML = '<option value="">Select Unit</option>';
     units.forEach(u => {
         const option = document.createElement('option');
-        const shortName = u.shortName || u.name;
+        const shortName = u.unitPrefix || u.name;
         option.value = shortName;
         option.textContent = `${u.name} (${shortName})`;
-        option.setAttribute('data-decimal', u.allowDecimal === 'Yes' ? 'true' : 'false');
+        option.setAttribute('data-decimal', u.acceptDecimal ? 'true' : 'false');
         unitSelect.appendChild(option);
     });
 
@@ -574,7 +574,7 @@ function addConversionRow() {
     const select = row.querySelector('.conversion-unit-select');
     units.forEach(u => {
         const option = document.createElement('option');
-        const shortName = u.shortName || u.name;
+        const shortName = u.unitPrefix || u.name;
         option.value = shortName;
         option.textContent = `${u.name} (${shortName})`;
         select.appendChild(option);

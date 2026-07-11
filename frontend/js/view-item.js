@@ -1,6 +1,7 @@
 // view-item.js - Logic for SPH Billing Item Detailed View page
 
 let items = [];
+let units = [];
 let activeItem = null;
 let itemImages = [];
 let activeImageIndex = -1;
@@ -41,15 +42,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
 });
 
-// Load Items database from API
+// Load Items and Units database from API
 async function loadAPIData() {
     try {
-        const res = await fetch('/api/items');
-        items = await res.json();
+        const [resItems, resUnits] = await Promise.all([
+            fetch('/api/items'),
+            fetch('/api/units')
+        ]);
+        items = await resItems.json();
+        units = await resUnits.json();
     } catch (err) {
         console.error('Error loading items:', err);
         items = [];
+        units = [];
     }
+}
+
+function getShortUnitName(unitName) {
+    if (!unitName) return 'Unit';
+    const found = units.find(u => u.name === unitName || u.unitPrefix === unitName);
+    return found ? (found.unitPrefix || found.name) : unitName;
 }
 
 // Render left products list with search filter
@@ -106,7 +118,8 @@ function renderActiveItemDetails() {
     document.getElementById('viewGST').textContent = gstText;
 
     // Purchase Details
-    document.getElementById('viewPurchaseUnit').textContent = activeItem.unit || '-';
+    const shortUnit = getShortUnitName(activeItem.unit);
+    document.getElementById('viewPurchaseUnit').textContent = shortUnit || '-';
     const purchaseAmount = parseFloat(activeItem.purchaseAmount) || 0;
     const purchaseTaxText = activeItem.purchaseTaxType === 'with' ? 'With Tax' : 'Without Tax';
     document.getElementById('viewPurchaseAmount').textContent = `₹${purchaseAmount.toFixed(2)} ${purchaseTaxText}`;
@@ -128,10 +141,11 @@ function renderActiveItemDetails() {
         document.getElementById('conversionsTableView').style.display = 'block';
         activeItem.conversions.forEach(c => {
             const row = document.createElement('div');
+            const cShortUnit = getShortUnitName(c.unit);
             row.className = 'table-view-row';
             row.innerHTML = `
-                <div>${c.unit}</div>
-                <div>1 ${activeItem.unit || 'Unit'} = ${c.factor} ${c.unit}</div>
+                <div>${cShortUnit}</div>
+                <div>1 ${shortUnit || 'Unit'} = ${c.factor} ${cShortUnit}</div>
                 <div>₹${parseFloat(c.price).toFixed(2)}</div>
             `;
             tableBody.appendChild(row);
@@ -149,7 +163,7 @@ function renderActiveItemDetails() {
     // Tag Sticker rendering
     document.getElementById('tagCodeTag').textContent = activeItem.code;
     document.getElementById('tagNameTag').textContent = activeItem.name;
-    document.getElementById('tagPriceTag').textContent = `₹${sellAmount.toFixed(2)}/${activeItem.unit || 'Unit'}`;
+    document.getElementById('tagPriceTag').textContent = `₹${sellAmount.toFixed(2)}/${shortUnit || 'Unit'}`;
     updateQRCode(activeItem.code);
 }
 
@@ -247,7 +261,8 @@ function setupEventListeners() {
         const code = activeItem.code;
         const name = activeItem.name;
         const sellAmount = parseFloat(activeItem.sellingPrice) || 0;
-        const displayPrice = `₹${sellAmount.toFixed(2)}/${activeItem.unit || 'Unit'}`;
+        const shortUnit = getShortUnitName(activeItem.unit);
+        const displayPrice = `₹${sellAmount.toFixed(2)}/${shortUnit || 'Unit'}`;
 
         const qrCanvas = document.querySelector('#tagQRCode canvas');
         const qrImg = document.querySelector('#tagQRCode img');
@@ -309,12 +324,24 @@ function setupEventListeners() {
             const result = await res.json();
             if (result.success) {
                 deleteModal.classList.remove('show');
-                showToast('Yes deleted successfully', 'success');
+                showToast('Item deleted successfully', 'success');
 
-                // Redirect back to list page after deletion toast completes
-                setTimeout(() => {
-                    window.location.href = 'items.html';
-                }, 1200);
+                // Stay in item view page and select next available item
+                if (items.length > 0) {
+                    activeItem = items[0];
+                    const newUrl = `${window.location.pathname}?code=${activeItem.code}`;
+                    window.history.pushState({ path: newUrl }, '', newUrl);
+                } else {
+                    activeItem = null;
+                    document.getElementById('pageTitleName').textContent = 'No items found';
+                }
+                
+                const searchVal = document.getElementById('sidebarSearch') ? document.getElementById('sidebarSearch').value : '';
+                renderSidebarProducts(searchVal);
+                
+                if (activeItem) {
+                    renderActiveItemDetails();
+                }
             }
         } catch (err) {
             console.error('Error deleting item:', err);

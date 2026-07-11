@@ -24,6 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            
+            // Close any open custom dropdowns
+            document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+            
             const target = btn.getAttribute('data-target');
 
             if (e.target.closest('.clear-date-icon')) {
@@ -81,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             popup.style.display = 'none';
             activeTarget = null;
         }
-    });
+    }, true);
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {

@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH Billing - View Purchase Invoice</title>
+    <link rel="stylesheet" href="css/style.css?v=9">
+    <link rel="stylesheet" href="css/sales.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .icon-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: white;
+            cursor: pointer;
+            color: var(--text-main);
+        }
+        .icon-btn.delete-btn {
+            background: #FEF2F2;
+            border-color: #FCA5A5;
+            color: #EF4444;
+        }
+        .icon-btn.delete-btn:hover {
+            background: #FEE2E2;
+        }
+        .icon-btn:hover {
+            background: #F8FAFC;
+        }
+        .form-grid-pi {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .view-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .view-value {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+        
+        .pi-summary-grid {
+            display: flex;
+            gap: 24px;
+            margin-top: 24px;
+        }
+        .pi-left-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .pi-summary-table {
+            width: 400px;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .pi-summary-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .pi-summary-table tr:last-child td {
+            border-bottom: none;
+        }
+        .pi-summary-table .amount-td {
+            text-align: right;
+            font-weight: 500;
+        }
+        .pi-summary-table .grand-total-row {
+            color: #000B58;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            background: white;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+            padding: 24px;
+        }
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .btn-cancel {
+            background: white;
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-danger {
+            background: #EF4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .bottom-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: white;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+        .btn-primary {
+            background: #000B58;
+            color: white;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn-outline {
+            background: white;
+            color: #000B58;
+            border: 1px solid #000B58;
+            padding: 8px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        /* Print Styles */
+        @media print {
+            body { background: white !important; }
+            .sidebar, .top-bar, .page-header, .bottom-bar, .icon-btn { display: none !important; }
+            .main-content { overflow: visible !important; height: auto !important; padding: 0 !important; background: white !important; }
+            .app-container { display: block !important; height: auto !important; }
+            .create-card { border: none !important; box-shadow: none !important; padding: 0 !important; margin-bottom: 20px !important; }
+            .create-card-title { background: #F1F5F9 !important; border: 1px solid #E2E8F0 !important; color: black !important; padding: 8px 16px !important; }
+            .create-card-body { border: 1px solid #E2E8F0 !important; border-top: none !important; padding: 16px !important; }
+            .pi-summary-table, .billing-table { border: 1px solid #E2E8F0 !important; }
+            .billing-table th { background: #F8FAFC !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+    </style>
+</head>
+<body class="app-body">
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <img src="Images/Logo.png" alt="SPH Logo" class="app-logo">
+        </div>
+        <div class="top-bar-right">
+            <div class="user-profile">
+                <div class="user-avatar" style="overflow: hidden;">
+                    <img src="Images/profile_avatar.png" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <span class="user-name">SPH</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <a href="#" class="nav-item">
+                <img src="Icons/Home icon.svg" alt="Home" class="nav-icon">
+                <span>Home</span>
+            </a>
+            <a href="items.html" class="nav-item">
+                <img src="Icons/Items icon.svg" alt="Items" class="nav-icon">
+                <span>Items</span>
+            </a>
+            <a href="sales.html" class="nav-item">
+                <img src="Icons/Sales icon.svg" alt="Sales" class="nav-icon">
+                <span>Sales</span>
+            </a>
+            <a href="vendor.html" class="nav-item active">
+                <img src="Icons/Vendor Icon.svg" alt="Vendor" class="nav-icon">
+                <span>Vendor</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Customer icon.svg" alt="Customer" class="nav-icon">
+                <span>Customer</span>
+            </a>
+            <a href="#" class="nav-item">
+                <img src="Icons/Voucher icon.svg" alt="Voucher" class="nav-icon">
+                <span>Voucher</span>
+            </a>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content" style="display: flex; flex-direction: column; overflow: hidden; background-color: #F8FAFC; position: relative;">
+            <!-- Page Header -->
+            <div class="page-header" style="height: 45px; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background-color: white; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                <div class="header-left">
+                    <a href="purchase-invoice.html" style="color: var(--text-main); text-decoration: none; display: flex; align-items: center;">
+                        <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i>
+                    </a>
+                    <h1 class="page-title" id="pagePiNo" style="margin: 0; font-size: 16px; font-weight: 600;">PO001</h1>
+                </div>
+                <div class="header-right">
+                    <button class="icon-btn delete-btn" id="deleteBtn" title="Delete Invoice">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button class="icon-btn" id="editBtn" title="Edit Invoice">
+                        <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Content -->
+            <div style="flex: 1; overflow-y: auto; padding: 24px; padding-bottom: 80px;">
+                <!-- Vendor Details Card -->
+                <div class="create-card">
+                    <div class="create-card-title">Vendor Details</div>
+                    <div class="create-card-body" style="display: grid; grid-template-columns: repeat(10, 1fr); gap: 20px;">
+                        <!-- Row 1 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <div class="view-label">PI No</div>
+                            <div class="view-value" id="viewPiNo">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <div class="view-label">Date</div>
+                            <div class="view-value" id="viewDate">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 6;">
+                            <div class="view-label">Vendor Name</div>
+                            <div class="view-value" id="viewVendorName">-</div>
+                        </div>
+
+                        <!-- Row 2 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <div class="view-label">Ref No</div>
+                            <div class="view-value" id="viewRefNo">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <div class="view-label">Payment Terms</div>
+                            <div class="view-value" id="viewPaymentTerms">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <div class="view-label">GSTIN No</div>
+                            <div class="view-value" id="viewGstin">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <div class="view-label">PAN No</div>
+                            <div class="view-value" id="viewPan">-</div>
+                        </div>
+
+                        <!-- Row 3 -->
+                        <div class="form-group" style="grid-column: span 2;">
+                            <div class="view-label">Due Date</div>
+                            <div class="view-value" id="viewDueDate">-</div>
+                        </div>
+                        <div style="grid-column: span 2;"></div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <div class="view-label">Billing Address</div>
+                            <div class="view-value" id="viewBillAddress" style="white-space: pre-wrap; font-weight: 400; line-height: 1.4;">-</div>
+                        </div>
+                        <div class="form-group" style="grid-column: span 3;">
+                            <div class="view-label">Shipping Address</div>
+                            <div class="view-value" id="viewShipAddress" style="white-space: pre-wrap; font-weight: 400; line-height: 1.4;">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Item Details Card -->
+                <div class="create-card">
+                    <div class="create-card-title">Item Details</div>
+                    <div class="create-card-body" style="padding: 16px;">
+                        <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                            <table class="billing-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">S No</th>
+                                        <th style="width: 180px; text-align: left;">Item Name</th>
+                                        <th style="width: 90px;">HSN</th>
+                                        <th style="width: 70px; text-align: left;">Qty</th>
+                                        <th style="width: 90px; text-align: left;">Unit</th>
+                                        <th style="width: 90px; text-align: left;">Rate</th>
+                                        <th style="width: 100px; text-align: left;">Amount</th>
+                                        <th style="width: 80px; text-align: left;">Discount</th>
+                                        <th style="width: 100px; text-align: left;">Final Amt</th>
+                                        <th style="width: 110px; text-align: left;">Tax</th>
+                                        <th style="width: 110px; text-align: left;">Total Amt</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="viewItemsBody">
+                                    <!-- Dynamic Rows -->
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #F8FAFC; font-weight: 600; height: 40px;">
+                                        <td colspan="6" style="text-align: right; padding-right: 16px;">Total</td>
+                                        <td id="tableTotalAmount">₹0.00</td>
+                                        <td id="tableTotalDiscount">₹0.00</td>
+                                        <td id="tableTotalFinalAmt">₹0.00</td>
+                                        <td id="tableTotalTax">₹0.00</td>
+                                        <td id="tableTotalGrand">₹0.00</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Bottom Summary Grid -->
+                        <div class="pi-summary-grid">
+                            <div class="pi-left-section">
+                                <div style="display: flex; gap: 40px; margin-bottom: 24px;">
+                                    <div>
+                                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Paid Amount</div>
+                                        <div style="font-size: 14px;" id="viewPaidAmount">₹0.00</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Due Amount</div>
+                                        <div style="font-size: 14px;" id="viewDueAmount">₹0.00</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="pi-upload-document" style="margin-bottom: 24px;">
+                                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Upload Document</div>
+                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" id="viewDocumentContainer">
+                                        <!-- Document Badges -->
+                                    </div>
+                                </div>
+
+                                <div class="pi-note">
+                                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Note</div>
+                                    <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; min-height: 80px; background: white; font-size: 14px; white-space: pre-wrap;" id="viewNote"></div>
+                                </div>
+                            </div>
+                            
+                            <div style="border: 1px solid var(--border-color); border-radius: 8px; background: white; overflow: hidden; align-self: flex-start;">
+                                <table class="pi-summary-table">
+                                    <tr>
+                                        <td>Sub Total</td>
+                                        <td class="amount-td" id="sumSubTotal">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Discount</td>
+                                        <td class="amount-td" id="sumDiscountAmount">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td>After Discount</td>
+                                        <td class="amount-td" id="sumAfterDiscount">₹0.00</td>
+                                    </tr>
+                                    <tr id="sgstRow">
+                                        <td id="sgstLabel">SGST 0%</td>
+                                        <td class="amount-td" id="sumSGST">₹0.00</td>
+                                    </tr>
+                                    <tr id="cgstRow">
+                                        <td id="cgstLabel">CGST 0%</td>
+                                        <td class="amount-td" id="sumCGST">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total</td>
+                                        <td class="amount-td" id="sumTotal">₹0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Round Off</td>
+                                        <td class="amount-td" id="sumRoundOff">0.00</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="grand-total-row">Grand Total</td>
+                                        <td class="amount-td grand-total-row" id="sumGrandTotal">₹0.00</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions Bar -->
+            <div class="bottom-bar">
+                <button class="btn-cancel" style="display: flex; align-items: center; gap: 6px;" onclick="window.location.href='purchase-invoice.html'">
+                    <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Back
+                </button>
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn-outline" id="exportBtn">Export</button>
+                    <button class="btn-primary" id="printBtn">Print</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete Modal -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-card">
+            <div class="modal-title">Delete Purchase Invoice</div>
+            <p style="color: var(--text-muted); font-size: 14px; margin: 0;">Are you sure you want to delete this invoice? This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancelDeleteBtn">No, Cancel</button>
+                <button class="btn-danger" id="confirmDeleteBtn">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        let currentInvoiceId = null;
+        let purchaseInvoices = [];
+        let vendors = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Get ID from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const id = urlParams.get('id');
+            
+            if (!id) {
+                alert('No Invoice ID provided!');
+                window.location.href = 'purchase-invoice.html';
+                return;
+            }
+            currentInvoiceId = id;
+
+            try {
+                // Fetch data
+                const [piRes, vendorRes] = await Promise.all([
+                    fetch('/api/purchase-invoices'),
+                    fetch('/api/vendors')
+                ]);
+                purchaseInvoices = await piRes.json();
+                vendors = await vendorRes.json();
+
+                const invoice = purchaseInvoices.find(pi => String(pi.id) === String(id));
+                if (!invoice) {
+                    alert('Invoice not found!');
+                    window.location.href = 'purchase-invoice.html';
+                    return;
+                }
+
+                renderInvoiceDetails(invoice);
+            } catch (err) {
+                console.error("Error fetching invoice data:", err);
+                alert("Failed to load invoice data");
+            }
+
+            // Print
+            document.getElementById('printBtn').addEventListener('click', () => {
+                window.print();
+            });
+
+            // Edit
+            document.getElementById('editBtn').addEventListener('click', () => {
+                window.location.href = `create-purchase-invoice.html?edit=${currentInvoiceId}`;
+            });
+
+            // Delete Modal
+            const deleteModal = document.getElementById('deleteModal');
+            document.getElementById('deleteBtn').addEventListener('click', () => {
+                deleteModal.style.display = 'flex';
+            });
+            document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
+                deleteModal.style.display = 'none';
+            });
+            document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+                try {
+                    const updatedInvoices = purchaseInvoices.filter(pi => String(pi.id) !== String(currentInvoiceId));
+                    await fetch('/api/purchase-invoices', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatedInvoices)
+                    });
+                    alert('Invoice deleted successfully!');
+                    window.location.href = 'purchase-invoice.html';
+                } catch (err) {
+                    console.error("Failed to delete invoice:", err);
+                    alert("Failed to delete invoice");
+                    deleteModal.style.display = 'none';
+                }
+            });
+        });
+
+        function renderInvoiceDetails(data) {
+            document.getElementById('pagePiNo').textContent = data.piNo;
+            document.getElementById('viewPiNo').textContent = data.piNo;
+            document.getElementById('viewDate').textContent = formatDate(data.date || data.purchaseDate);
+            document.getElementById('viewVendorName').textContent = data.vendorName;
+            document.getElementById('viewRefNo').textContent = data.refNo || '-';
+            document.getElementById('viewPaymentTerms').textContent = data.paymentTerms || '-';
+            
+            const vendor = vendors.find(v => String(v.id) === String(data.vendorId));
+            document.getElementById('viewGstin').textContent = vendor?.gstin || data.gstinNo || '-';
+            document.getElementById('viewPan').textContent = vendor?.panNumber || data.panNo || '-';
+            
+            document.getElementById('viewDueDate').textContent = data.dueDate && data.dueDate !== '-' ? formatDate(data.dueDate) : '-';
+            document.getElementById('viewBillAddress').textContent = data.billingAddress || data.billAddress || '-';
+            document.getElementById('viewShipAddress').textContent = data.shippingAddress || data.shipAddress || '-';
+
+            // Items
+            const tbody = document.getElementById('viewItemsBody');
+            tbody.innerHTML = '';
+            
+            let tAmt = 0, tDisc = 0, tFinal = 0, tTax = 0, tGrand = 0;
+
+            data.items.forEach((row, idx) => {
+                const amount = row.rate * row.qty;
+                const finalAmt = amount - row.discount;
+                const taxAmt = finalAmt * (row.taxRate / 100);
+                const totalAmt = finalAmt + taxAmt;
+
+                tAmt += amount;
+                tDisc += row.discount;
+                tFinal += finalAmt;
+                tTax += taxAmt;
+                tGrand += totalAmt;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td>${row.name}</td>
+                    <td>${row.hsn}</td>
+                    <td>${row.qty}</td>
+                    <td>${row.unit} <i data-lucide="chevron-down" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i></td>
+                    <td>₹${row.rate.toFixed(2)}</td>
+                    <td>₹${amount.toFixed(2)}</td>
+                    <td>₹${row.discount.toFixed(2)}</td>
+                    <td>₹${finalAmt.toFixed(2)}</td>
+                    <td>
+                        <div>${row.taxRate} %</div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">₹${taxAmt.toFixed(2)}</div>
+                    </td>
+                    <td>₹${totalAmt.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Table Totals
+            document.getElementById('tableTotalAmount').textContent = `₹${tAmt.toFixed(2)}`;
+            document.getElementById('tableTotalDiscount').textContent = `₹${tDisc.toFixed(2)}`;
+            document.getElementById('tableTotalFinalAmt').textContent = `₹${tFinal.toFixed(2)}`;
+            document.getElementById('tableTotalTax').textContent = `₹${tTax.toFixed(2)}`;
+            document.getElementById('tableTotalGrand').textContent = `₹${tGrand.toFixed(2)}`;
+
+            // Summary Grid
+            const globalDiscount = data.discountAmount || 0;
+            const afterDisc = tAmt - globalDiscount;
+            
+            // Re-calculate tax based on global discount allocated to items, as in create page
+            let newTotalTax = 0;
+            if (tAmt > 0) {
+                data.items.forEach(r => {
+                    const itemBaseAmt = (r.rate * r.qty) - r.discount;
+                    const rowRatio = itemBaseAmt / tAmt;
+                    const allocatedDisc = globalDiscount * rowRatio;
+                    const finalRowAmt = itemBaseAmt - allocatedDisc;
+                    newTotalTax += finalRowAmt * (r.taxRate / 100);
+                });
+            } else {
+                newTotalTax = tTax; // Fallback
+            }
+
+            const totalAmtFinal = afterDisc + newTotalTax;
+            const finalGrandTotal = Math.round(totalAmtFinal);
+            const roundOff = finalGrandTotal - totalAmtFinal;
+            const dueAmt = finalGrandTotal - (data.paidAmount || 0);
+
+            document.getElementById('sumSubTotal').textContent = `₹${tAmt.toFixed(2)}`;
+            
+            if (data.discountPercent) {
+                document.getElementById('sumDiscountAmount').textContent = `${data.discountPercent}% (₹${globalDiscount.toFixed(2)})`;
+            } else {
+                document.getElementById('sumDiscountAmount').textContent = `₹${globalDiscount.toFixed(2)}`;
+            }
+            
+            document.getElementById('sumAfterDiscount').textContent = `₹${afterDisc.toFixed(2)}`;
+            
+            const totalTaxRate = data.items.length > 0 ? data.items[0].taxRate : 0;
+            const avgTaxRate = afterDisc > 0 ? (newTotalTax / afterDisc) * 100 : 0;
+            const halfTaxRate = avgTaxRate / 2;
+            const halfTaxAmt = newTotalTax / 2;
+
+            document.getElementById('sgstLabel').textContent = `SGST ${halfTaxRate.toFixed(2)}%`;
+            document.getElementById('sumSGST').textContent = `₹${halfTaxAmt.toFixed(2)}`;
+            document.getElementById('cgstLabel').textContent = `CGST ${halfTaxRate.toFixed(2)}%`;
+            document.getElementById('sumCGST').textContent = `₹${halfTaxAmt.toFixed(2)}`;
+            
+            document.getElementById('sumTotal').textContent = `₹${totalAmtFinal.toFixed(2)}`;
+            document.getElementById('sumRoundOff').textContent = roundOff.toFixed(2);
+            document.getElementById('sumGrandTotal').textContent = `₹${finalGrandTotal.toFixed(2)}`;
+
+            document.getElementById('viewPaidAmount').textContent = `₹${(data.paidAmount || 0).toFixed(2)}`;
+            document.getElementById('viewDueAmount').textContent = `₹${dueAmt.toFixed(2)}`;
+            document.getElementById('viewNote').textContent = data.note || '';
+
+            // Documents
+            const docContainer = document.getElementById('viewDocumentContainer');
+            if (data.documents && data.documents.length > 0) {
+                docContainer.innerHTML = data.documents.map((d, i) => `
+                    <div style="display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 13px; background: white;">
+                        <span style="margin-right: 8px;">${i + 1}</span>
+                        <a href="#" style="color: var(--text-muted); display: flex; align-items: center;"><i data-lucide="download" style="width: 14px; height: 14px;"></i></a>
+                    </div>
+                `).join('');
+            } else {
+                docContainer.innerHTML = `<span style="color: var(--text-muted); font-size: 13px; font-style: italic;">No documents uploaded</span>`;
+            }
+
+            lucide.createIcons();
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d.getTime())) return dateString;
+            return d.toLocaleDateString('en-GB'); // dd/mm/yyyy
+        }
+    </script>
+</body>
+</html>
