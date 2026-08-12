@@ -74,8 +74,8 @@ const requireAuth = async (req, res, next) => {
         return next();
     }
     
-    // Allow login endpoint without auth
-    if (req.path === '/auth/login' || req.originalUrl === '/api/auth/login') {
+    // Allow login endpoint and db init without auth
+    if (req.path === '/auth/login' || req.originalUrl === '/api/auth/login' || req.originalUrl === '/api/init-db') {
         return next();
     }
 
