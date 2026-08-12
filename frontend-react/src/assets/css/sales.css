@@ -30,7 +30,7 @@
 
 .billing-screen-tab {
     background: white;
-    padding: 0 24px;
+    padding: 0 16px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -312,7 +312,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 24px;
+    padding: 0 16px;
     background-color: white;
     border-top: 1px solid var(--border-color);
     height: 50px;
@@ -352,7 +352,7 @@
     background-color: #000B58;
     color: white;
     border: none;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-family: inherit;
     font-weight: 500;
@@ -364,7 +364,7 @@
     background-color: white;
     color: #000B58;
     border: 1px solid #000B58;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-family: inherit;
     font-weight: 500;

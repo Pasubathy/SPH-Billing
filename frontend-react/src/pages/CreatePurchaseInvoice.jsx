@@ -70,18 +70,51 @@ export default function CreatePurchaseInvoice() {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
 
+  
   useEffect(() => {
-    fetch('http://localhost:3000/api/vendors')
+    if (location.state?.editMode && location.state?.invoiceData) {
+        const data = location.state.invoiceData;
+        setPiNo(data.piNo || data.pi_no || '');
+        setPurchaseDate(data.date || '');
+        
+        setSelectedVendorId(data.vendorId || data.vendor_id || null);
+        setVendor(data.vendorName || data.vendor_name || '');
+        setRefNo(data.refNo || data.ref_no || '');
+        setPaymentTerms(data.paymentTerms || data.payment_terms || 'None');
+        setDueDate(data.dueDate || data.due_date || '');
+        
+        const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+        setItems(parsedItems.map(it => ({
+            code: it.code || '',
+            name: it.name || 'Unknown Item',
+            hsn: it.hsn || '',
+            qty: parseFloat(it.qty) || 1,
+            unit: it.unit || 'Nos',
+            rate: parseFloat(it.rate) || 0,
+            amount: (parseFloat(it.qty) || 1) * (parseFloat(it.rate) || 0),
+            discount: parseFloat(it.disc || it.discount) || 0,
+            tax: parseFloat(it.taxPercent || it.tax) || 0,
+            isNew: false
+        })));
+        
+        setPaidAmount(data.paidAmount || data.paid_amount || 0);
+        setDiscountAmount(data.discountAmount || data.discount_amount || 0);
+        setPiNote(data.note || '');
+    }
+  }, [location]);
+
+  useEffect(() => {
+    fetch('/api/vendors')
       .then(res => res.json())
       .then(data => setVendorsList(data || []))
       .catch(err => console.error('Failed to fetch vendors:', err));
       
-    fetch('http://localhost:3000/api/items')
+    fetch('/api/items')
       .then(res => res.json())
       .then(data => setAllItems(data || []))
       .catch(err => console.error('Failed to fetch items:', err));
 
-    fetch('http://localhost:3000/api/units')
+    fetch('/api/units')
       .then(res => res.json())
       .then(data => setUnitsList(data || []))
       .catch(err => console.error('Failed to fetch units:', err));
@@ -96,7 +129,7 @@ export default function CreatePurchaseInvoice() {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/purchase-invoices')
+    fetch('/api/purchase-invoices')
       .then(res => res.json())
       .then(data => {
          const nextNum = (data || []).length + 1;
@@ -198,11 +231,12 @@ export default function CreatePurchaseInvoice() {
         grandTotal: calculatedGrandTotal,
         paidAmount: parsedPaid,
         items: items,
-        manualPiNumber: null
+        manualPiNumber: null,
+        updatedAt: location.state?.editMode ? location.state.invoiceData.updated_at : undefined
       };
 
-      const targetEndpoint = 'http://localhost:3000/api/purchases/create';
-      const method = 'POST';
+      const targetEndpoint = location.state?.editMode ? `/api/purchases/${location.state.invoiceData.id}` : '/api/purchases/create';
+      const method = location.state?.editMode ? 'PUT' : 'POST';
 
       const saveRes = await fetch(targetEndpoint, {
         method: method,
@@ -242,7 +276,7 @@ export default function CreatePurchaseInvoice() {
     formData.append('invoiceFile', file);
 
     try {
-      const res = await fetch('http://localhost:3000/api/ai/extract-invoice', {
+      const res = await fetch('/api/ai/extract-invoice', {
         method: 'POST',
         body: formData
       });
@@ -442,14 +476,14 @@ export default function CreatePurchaseInvoice() {
       </style>
       
       {/* Page Header */}
-      <div className="page-header" style={{ height: '45px', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+      <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
         <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>{isEditMode ? 'Edit Purchase Invoice' : 'Create Purchase Invoice'}</h1>
         <button onClick={() => setShowAiModal(true)} style={{ height: '28px', padding: '0 12px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#F3F0FF', color: '#4338CA', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '500' }}>
           <Sparkles size={14} /> Generate with AI
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px', paddingBottom: '100px', background: '#F8FAFC' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px', background: '#F8FAFC' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           {/* Vendor Details */}
@@ -629,7 +663,7 @@ export default function CreatePurchaseInvoice() {
                   <tbody>
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan="12" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic' }}>
+                        <td colSpan="12" style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic' }}>
                           No items added yet. Search or use AI to generate invoice.
                         </td>
                       </tr>
@@ -788,7 +822,7 @@ export default function CreatePurchaseInvoice() {
         </div>
       </div>
 
-      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', boxSizing: 'border-box' }}>
+      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', boxSizing: 'border-box' }}>
         <button onClick={() => navigate('/purchase-invoice')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>
@@ -804,7 +838,7 @@ export default function CreatePurchaseInvoice() {
 
       {showAiModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ background: 'white', padding: '24px', borderRadius: '16px', width: '480px', maxWidth: '90%' }}>
+          <div style={{ background: 'white', padding: '16px', borderRadius: '16px', width: '480px', maxWidth: '90%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4338CA', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                 <Sparkles size={20} /> Generate with AI
@@ -840,7 +874,7 @@ export default function CreatePurchaseInvoice() {
 
       {showScanner && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
+                <div style={{ background: 'white', padding: '16px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Scan Tag</h3>
                         <X style={{ cursor: 'pointer', width: '20px', height: '20px' }} onClick={stopScanner} />

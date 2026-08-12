@@ -4,11 +4,13 @@ import Items from './pages/Items';
 import CreateItem from './pages/CreateItem';
 import ViewItem from './pages/ViewItem';
 import Login from './pages/Login';
+import Home from './pages/Home';
 import Settings from './pages/Settings';
 import Vendors from './pages/Vendors';
 import PurchaseInvoice from './pages/PurchaseInvoice';
 import Categories from './pages/Categories';
 import Units from './pages/Units';
+import PrintTags from './pages/PrintTags';
 import './assets/css/style.css';
 import './assets/css/items-grid.css';
 
@@ -40,9 +42,10 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/print/tags" element={<PrintTags />} />
         
         {/* Protected Routes */}
+        <Route path="/" element={<ProtectedRoute><Layout><Home /></Layout></ProtectedRoute>} />
         <Route path="/items" element={<ProtectedRoute><Layout><Items /></Layout></ProtectedRoute>} />
         <Route path="/items/create" element={<ProtectedRoute><Layout><CreateItem /></Layout></ProtectedRoute>} />
         <Route path="/items/view/:code" element={<ProtectedRoute><Layout><ViewItem /></Layout></ProtectedRoute>} />

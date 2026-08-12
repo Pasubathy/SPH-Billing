@@ -226,7 +226,7 @@ body:not(.app-body) {
     right: 20px;
     background-color: white;
     color: var(--text-main);
-    padding: 16px 24px;
+    padding: 16px 16px;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     display: flex;
@@ -280,7 +280,7 @@ body.app-body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 24px;
+    padding: 0 16px;
     z-index: 10;
 }
 
@@ -478,7 +478,7 @@ body.app-body {
 }
 
 .tab {
-    padding: 0 24px;
+    padding: 0 16px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -988,7 +988,7 @@ td, table td {
 }
 .modal-content {
     background-color: white;
-    padding: 24px;
+    padding: 16px;
     border-radius: 12px;
     width: 90%;
     max-width: 400px;
@@ -1095,7 +1095,7 @@ td, table td {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: 20px 24px 0 24px;
+    padding: 20px 16px 0 16px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.01);
 }
 
@@ -1687,7 +1687,7 @@ td, table td {
 
 .btn-footer-solid {
     height: 35px;
-    padding: 0 24px;
+    padding: 0 16px;
     background-color: #000B58;
     border: none;
     border-radius: 6px;
@@ -2611,7 +2611,7 @@ td, table td {
     bottom: 0;
     height: 50px;
     background-color: white;
-    padding: 0 24px;
+    padding: 0 16px;
     border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
@@ -2702,7 +2702,7 @@ td, table td {
     display: flex;
     flex: 1;
     gap: 16px;
-    padding: 16px 24px 0;
+    padding: 16px 16px 0;
     overflow: hidden;
 }
 
@@ -2963,7 +2963,7 @@ td, table td {
 .billing-bottom-actions {
     display: flex;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 16px 16px;
     background-color: white;
     border-top: 1px solid var(--border-color);
     margin-top: 16px;
@@ -2992,7 +2992,7 @@ td, table td {
     background: #000B58;
     border: none;
     color: white;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -3003,7 +3003,7 @@ td, table td {
     background: white;
     border: 1px solid #000B58;
     color: #000B58;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -3148,7 +3148,7 @@ td, table td {
 .billing-bottom-actions {
     display: flex;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 16px 16px;
     background-color: white;
     border-top: 1px solid var(--border-color);
     margin-top: 16px;
@@ -3177,7 +3177,7 @@ td, table td {
     background: #000B58;
     border: none;
     color: white;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -3188,7 +3188,7 @@ td, table td {
     background: white;
     border: 1px solid #000B58;
     color: #000B58;
-    padding: 8px 24px;
+    padding: 8px 16px;
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -3265,8 +3265,28 @@ div:not(.search-box):has(> input[placeholder*="search" i], > input[placeholder*=
     box-shadow: none !important;
 }
 
-/* ─── Standard .search-box Focus Highlight ──────── */
+/* 🌟🌟🌟 Standard .search-box Focus Highlight 🌟🌟🌟🌟🌟🌟🌟🌟 */
 .search-box input:focus {
     border-color: var(--primary-color) !important;
     box-shadow: 0 0 0 2px rgba(0, 11, 88, 0.08) !important;
+}
+
+/* 🌟🌟🌟 Global Table Heights 🌟🌟🌟 */
+/* User requested: all module table data height 40px and table head height 35px */
+table thead tr, table thead th {
+    height: 35px !important;
+}
+
+table thead th {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+
+table tbody tr, table tbody td {
+    height: 40px !important;
+}
+
+table tbody td {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
 }

@@ -44,6 +44,9 @@ async function apiReq(endpoint, method = 'GET', body = null) {
     } catch (e) {
         console.error("API error", endpoint, e);
     }
+    if (status !== 200) {
+        console.error(`[API FAIL] ${method} ${endpoint} returned ${status}:`, data.error || data);
+    }
     
     const duration = performance.now() - start;
     testState.metrics.endpoints.push({ endpoint, method, duration, status });
@@ -62,7 +65,8 @@ describe('Accounting Engine E2E Integration Tests', async () => {
             token = res.data.token;
         } else {
             token = crypto.randomBytes(32).toString('hex');
-            await dbQuery(`INSERT INTO active_sessions (id, token_hash, username, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') ON CONFLICT DO NOTHING`, [crypto.randomUUID(), token, process.env.ADMIN_USERNAME || 'admin']);
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            await dbQuery(`INSERT INTO active_sessions (id, token_hash, username, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') ON CONFLICT DO NOTHING`, [crypto.randomUUID(), tokenHash, process.env.ADMIN_USERNAME || 'admin']);
         }
 
         // Isolated Test Data Setup
@@ -95,9 +99,9 @@ describe('Accounting Engine E2E Integration Tests', async () => {
     test('1. Sales Workflow: Create Sales Invoice', async () => {
         const payload = {
             date: new Date().toISOString().split('T')[0],
-            customer_id: testState.customer.id,
-            items: [{ id: testState.item.id, quantity: 10, selling_price: 100, discount: 0, taxAmount: 0, finalAmount: 1000 }],
-            sub_total: 1000, discount_amount: 0, total_tax: 0, amount: 1000, note: `Test ${testState.suffix}`
+            customerId: testState.customer.id,
+            items: [{ id: testState.item.id, code: testState.item.code, qty: 10, rate: 100, discount: 0, taxAmount: 0, amount: 1000 }],
+            subTotal: 1000, discount: 0, taxAmount: 0, grandTotal: 1000, note: `Test ${testState.suffix}`
         };
         const res = await apiReq('/sales/create', 'POST', payload);
         assert.equal(res.status, 200, `Expected 200, got ${res.status}`);
@@ -117,16 +121,16 @@ describe('Accounting Engine E2E Integration Tests', async () => {
 
     test('2. Sales Workflow: Partial Receipt', async () => {
         const payload = {
-            customer_id: testState.customer.id,
+            customerId: testState.customer.id,
             date: new Date().toISOString().split('T')[0],
-            payment_mode: 'Cash',
+            paymentMode: 'CASH',
             amount: 400,
-            reference_type: 'AGAINST_REFERENCE',
-            allocations: [{ invoice_id: testState.salesInvoiceId, amount: 400 }]
+            referenceType: 'AGAINST_REFERENCE',
+            allocations: [{ invoiceId: testState.salesInvoiceId, allocatedAmount: 400 }]
         };
         const res = await apiReq('/receipts/create', 'POST', payload);
         assert.equal(res.status, 200);
-        testState.receiptId = res.data.id || res.data.receipt?.id; // Assuming standard format
+        testState.receiptId = res.data.receiptId || res.data.id; // Assuming standard format
 
         const inv = await dbQuery('SELECT paid_amount, pending_to_receive FROM sales_invoices WHERE id = $1', [testState.salesInvoiceId]);
         assert.equal(inv.rows[0].paid_amount, '400.00');
@@ -182,7 +186,7 @@ describe('Accounting Engine E2E Integration Tests', async () => {
     test('6. PATCH Endpoint Audit Check', async () => {
         // Create another invoice to patch
         const resInv = await apiReq('/sales/create', 'POST', {
-            date: new Date().toISOString().split('T')[0], customer_id: testState.customer.id, items: [], sub_total: 0, amount: 0
+            date: new Date().toISOString().split('T')[0], customerId: testState.customer.id, items: [{ id: testState.item.id, code: testState.item.code, qty: 1, rate: 100, discount: 0, taxAmount: 0, amount: 100 }], subTotal: 100, grandTotal: 100
         });
         const newInvId = resInv.data.id;
 
@@ -215,7 +219,7 @@ describe('Accounting Engine E2E Integration Tests', async () => {
     test('8. Concurrency Testing (Race Condition on Cancel)', async () => {
         // Create an invoice
         const resInv = await apiReq('/sales/create', 'POST', {
-            date: new Date().toISOString().split('T')[0], customer_id: testState.customer.id, items: [], sub_total: 0, amount: 0
+            date: new Date().toISOString().split('T')[0], customerId: testState.customer.id, items: [{ id: testState.item.id, code: testState.item.code, qty: 1, rate: 100, discount: 0, taxAmount: 0, amount: 100 }], subTotal: 100, grandTotal: 100
         });
         const newInvId = resInv.data.id;
 

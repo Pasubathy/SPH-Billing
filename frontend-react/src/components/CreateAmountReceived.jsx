@@ -44,7 +44,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
         } else {
             const fetchCounter = async () => {
                 try {
-                    const res = await fetch('http://localhost:3000/api/payment-counter');
+                    const res = await fetch('/api/payment-counter');
                     const data = await res.json();
                     setArNo('AR' + String(data.counter || 1).padStart(3, '0'));
                 } catch (err) {
@@ -180,7 +180,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
             };
 
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:3000/api/receipts/create', {
+            const res = await fetch('/api/receipts/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

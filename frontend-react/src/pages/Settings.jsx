@@ -3,12 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Upload, X, ChevronLeft } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import CustomSelect from '../components/CustomSelect';
+import AutoScalingLabel from '../components/AutoScalingLabel';
 
 const STATES = ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Maharashtra', 'Gujarat', 'Rajasthan', 'Delhi'];
+
+const PREVIEW_ITEM = { code: '1001', name: 'Nails', price: '₹150.00/Box' };
 
 const defaultAccount = { company: '', mobile: '', email: '', address: '', isGst: 'No', gstin: '', pan: '', country: 'India', state: 'Tamil Nadu', city: '', pin: '', logo: '', sign: '' };
 
 const defaultTagSettings = {
+  tsPrintType: 'thermal',
+  tsA4Rows: 10,
+  tsA4Cols: 4,
+  tsA4MarginTop: 12,
+  tsA4MarginRight: 10,
+  tsA4MarginBottom: 12,
+  tsA4MarginLeft: 10,
+  tsA4HSpace: 2,
+  tsA4VSpace: 2,
   tsWidth: 50,
   tsHeight: 25,
   tsMarginTop: 0,
@@ -60,6 +72,7 @@ export default function Settings() {
   const [acc, setAcc] = useState(defaultAccount);
   const [tag, setTag] = useState(defaultTagSettings);
   const [inv, setInv] = useState(defaultInvSettings);
+  const [isLabelValid, setIsLabelValid] = useState(true);
   const [toast, setToast] = useState(null);
 
   const is4 = inv.width === '4inch';
@@ -143,7 +156,7 @@ export default function Settings() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', fontFamily: 'inherit' }}>
       <TopBar />
       {/* Nav Bar */}
-      <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+      <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '32px', height: '100%' }}>
           {[['myaccount', 'My Account'], ['tagsetting', 'Tag Setting'], ['invoicesetting', 'Invoice Setting']].map(([t, l]) => (
             <div key={t} style={tabStyle(t)} onClick={() => setActiveTab(t)}>{l}</div>
@@ -155,11 +168,11 @@ export default function Settings() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px', background: '#F8FAFC' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', background: '#F8FAFC' }}>
 
         {/* My Account */}
         {activeTab === 'myaccount' && (
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '24px' }}>
               <ImageUpload field="logo" label="Company Logo" />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -233,55 +246,132 @@ export default function Settings() {
         {/* Tag Setting */}
         {activeTab === 'tagsetting' && (
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', minHeight: '500px', overflow: 'hidden' }}>
-            <div style={{ width: '420px', padding: '24px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <FormField label="Label Width (mm)"><input type="number" style={inputStyle} value={tag.tsWidth} onChange={e => setTag(p => ({ ...p, tsWidth: +e.target.value }))} /></FormField>
-                <FormField label="Label Height (mm)"><input type="number" style={inputStyle} value={tag.tsHeight} onChange={e => setTag(p => ({ ...p, tsHeight: +e.target.value }))} /></FormField>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <FormField label="Margin Top (mm)"><input type="number" style={inputStyle} value={tag.tsMarginTop} onChange={e => setTag(p => ({ ...p, tsMarginTop: +e.target.value }))} /></FormField>
-                <FormField label="Margin Right (mm)"><input type="number" style={inputStyle} value={tag.tsMarginRight} onChange={e => setTag(p => ({ ...p, tsMarginRight: +e.target.value }))} /></FormField>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <FormField label="Margin Bottom (mm)"><input type="number" style={inputStyle} value={tag.tsMarginBottom} onChange={e => setTag(p => ({ ...p, tsMarginBottom: +e.target.value }))} /></FormField>
-                <FormField label="Margin Left (mm)"><input type="number" style={inputStyle} value={tag.tsMarginLeft} onChange={e => setTag(p => ({ ...p, tsMarginLeft: +e.target.value }))} /></FormField>
-              </div>
-              <FormField label="Content Alignment">
-                <CustomSelect
-                  value={tag.tsAlign}
-                  onChange={val => setTag(p => ({ ...p, tsAlign: val }))}
-                  options={[
-                    { value: 'Left', label: 'Left' },
-                    { value: 'Center', label: 'Center' },
-                    { value: 'Right', label: 'Right' }
-                  ]}
-                />
-              </FormField>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
-                <div style={{ fontWeight: '600', fontSize: '14px' }}>Field Name</div><div style={{ fontWeight: '600', fontSize: '14px' }}>Size</div>
-                {[
-                  ['tsOptCode', 'tsSizeCode', 'Code'],
-                  ['tsOptName', 'tsSizeName', 'Item Name'],
-                  ['tsOptPrice', 'tsSizePrice', 'Selling Price'],
-                  ['tsOptQR', 'tsSizeQR', 'QR Code']
-                ].map(([chk, sz, lbl]) => (
-                  <React.Fragment key={chk}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', padding: '0 8px', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={tag[chk]} onChange={e => setTag(p => ({ ...p, [chk]: e.target.checked }))} /> {lbl}
+            <div style={{ width: '420px', padding: '16px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Printer Type</div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {['thermal', 'a4'].map(t => (
+                    <label key={t} style={{ flex: 1, border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', borderColor: tag.tsPrintType === t ? '#000B58' : 'var(--border-color)' }}>
+                      <input type="radio" name="tsPrintType" value={t} checked={tag.tsPrintType === t} onChange={() => setTag(p => ({ ...p, tsPrintType: t }))} style={{ accentColor: '#000B58' }} /> {t === 'thermal' ? 'Thermal Roll' : 'A4 Label Sheet'}
                     </label>
-                    <input type="number" style={inputStyle} value={tag[sz]} onChange={e => setTag(p => ({ ...p, [sz]: +e.target.value }))} />
-                  </React.Fragment>
-                ))}
+                  ))}
+                </div>
+              </div>
+
+              {tag.tsPrintType === 'a4' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: '#000B58' }}>A4 Sheet Configuration</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Rows"><input type="number" style={inputStyle} value={tag.tsA4Rows} onChange={e => setTag(p => ({ ...p, tsA4Rows: +e.target.value }))} /></FormField>
+                    <FormField label="Columns"><input type="number" style={inputStyle} value={tag.tsA4Cols} onChange={e => setTag(p => ({ ...p, tsA4Cols: +e.target.value }))} /></FormField>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Top Margin (mm)"><input type="number" style={inputStyle} value={tag.tsA4MarginTop} onChange={e => setTag(p => ({ ...p, tsA4MarginTop: +e.target.value }))} /></FormField>
+                    <FormField label="Bottom Margin (mm)"><input type="number" style={inputStyle} value={tag.tsA4MarginBottom} onChange={e => setTag(p => ({ ...p, tsA4MarginBottom: +e.target.value }))} /></FormField>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Left Margin (mm)"><input type="number" style={inputStyle} value={tag.tsA4MarginLeft} onChange={e => setTag(p => ({ ...p, tsA4MarginLeft: +e.target.value }))} /></FormField>
+                    <FormField label="Right Margin (mm)"><input type="number" style={inputStyle} value={tag.tsA4MarginRight} onChange={e => setTag(p => ({ ...p, tsA4MarginRight: +e.target.value }))} /></FormField>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Horiz. Gap (mm)"><input type="number" style={inputStyle} value={tag.tsA4HSpace} onChange={e => setTag(p => ({ ...p, tsA4HSpace: +e.target.value }))} /></FormField>
+                    <FormField label="Vert. Gap (mm)"><input type="number" style={inputStyle} value={tag.tsA4VSpace} onChange={e => setTag(p => ({ ...p, tsA4VSpace: +e.target.value }))} /></FormField>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#000B58' }}>Label Size & Content Margin</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <FormField label="Label Width (mm)"><input type="number" style={inputStyle} value={tag.tsWidth} onChange={e => setTag(p => ({ ...p, tsWidth: +e.target.value }))} /></FormField>
+                  <FormField label="Label Height (mm)"><input type="number" style={inputStyle} value={tag.tsHeight} onChange={e => setTag(p => ({ ...p, tsHeight: +e.target.value }))} /></FormField>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <FormField label="Top Margin (mm)"><input type="number" style={inputStyle} value={tag.tsMarginTop} onChange={e => setTag(p => ({ ...p, tsMarginTop: +e.target.value }))} /></FormField>
+                  <FormField label="Bottom Margin (mm)"><input type="number" style={inputStyle} value={tag.tsMarginBottom} onChange={e => setTag(p => ({ ...p, tsMarginBottom: +e.target.value }))} /></FormField>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <FormField label="Left Margin (mm)"><input type="number" style={inputStyle} value={tag.tsMarginLeft} onChange={e => setTag(p => ({ ...p, tsMarginLeft: +e.target.value }))} /></FormField>
+                  <FormField label="Right Margin (mm)"><input type="number" style={inputStyle} value={tag.tsMarginRight} onChange={e => setTag(p => ({ ...p, tsMarginRight: +e.target.value }))} /></FormField>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#000B58' }}>Display Elements & Alignment</div>
+                <FormField label="Content Alignment">
+                  <CustomSelect
+                    value={tag.tsAlign}
+                    onChange={val => setTag(p => ({ ...p, tsAlign: val }))}
+                    options={[
+                      { value: 'Left', label: 'Left' },
+                      { value: 'Center', label: 'Center' },
+                      { value: 'Right', label: 'Right' }
+                    ]}
+                  />
+                </FormField>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ fontWeight: '600', fontSize: '13px', color: '#475569' }}>Display Element</div>
+                    <div style={{ fontWeight: '600', fontSize: '13px', color: '#475569' }}>Font / QR Size</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '12px', alignItems: 'center' }}>
+                    {[
+                      ['tsOptCode', 'tsSizeCode', 'Item Code'],
+                      ['tsOptName', 'tsSizeName', 'Item Name'],
+                      ['tsOptPrice', 'tsSizePrice', 'Selling Price'],
+                      ['tsOptQR', 'tsSizeQR', 'QR Code']
+                    ].map(([chk, sz, lbl]) => (
+                      <React.Fragment key={chk}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '8px', height: '38px', padding: '0 12px', cursor: 'pointer', background: tag[chk] ? 'white' : 'transparent', boxSizing: 'border-box' }}>
+                          <input type="checkbox" checked={tag[chk]} onChange={e => setTag(p => ({ ...p, [chk]: e.target.checked }))} style={{ accentColor: '#000B58' }} /> {lbl}
+                        </label>
+                        <input type="number" style={inputStyle} value={tag[sz]} onChange={e => setTag(p => ({ ...p, [sz]: +e.target.value }))} />
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={{ flex: 1, background: '#F1F5F9', padding: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'white', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: tag.tsAlign === 'Center' ? 'center' : tag.tsAlign === 'Right' ? 'flex-end' : 'flex-start', width: `${tag.tsWidth * 3.78}px`, height: `${tag.tsHeight * 3.78}px`, padding: `${tag.tsMarginTop * 3.78}px ${tag.tsMarginRight * 3.78}px ${tag.tsMarginBottom * 3.78}px ${tag.tsMarginLeft * 3.78}px`, boxSizing: 'border-box', overflow: 'hidden', gap: '8px', transition: 'all 0.3s' }}>
-                {tag.tsOptQR && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=1001`} style={{ width: `${tag.tsSizeQR / 100 * tag.tsWidth * 3.78}px`, height: `${tag.tsSizeQR / 100 * tag.tsWidth * 3.78}px`, objectFit: 'contain', flexShrink: 0 }} alt="QR" />}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: tag.tsAlign.toLowerCase() }}>
-                  {tag.tsOptCode && <div style={{ fontSize: `${tag.tsSizeCode}px`, fontWeight: '600', color: '#000' }}>1001</div>}
-                  {tag.tsOptName && <div style={{ fontSize: `${tag.tsSizeName}px`, fontWeight: '600', color: '#000' }}>Nails</div>}
-                  {tag.tsOptPrice && <div style={{ fontSize: `${tag.tsSizePrice}px`, fontWeight: '600', color: '#000' }}>₹150.00/Box</div>}
+            <div style={{ flex: 1, background: '#F1F5F9', display: 'flex', flexDirection: 'column' }}>
+              {!isLabelValid && (
+                <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '12px 16px', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid #FCA5A5' }}>
+                  The selected label template is too small for the selected content. Increase the label size or remove optional fields.
                 </div>
+              )}
+              <div style={{ flex: 1, padding: '40px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'auto' }}>
+                {tag.tsPrintType === 'a4' ? (
+                  <div style={{
+                    width: `${210 * 3.78}px`,
+                    height: `${297 * 3.78}px`,
+                    background: 'white',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    padding: `${(tag.tsA4MarginTop ?? 12) * 3.78}px ${(tag.tsA4MarginRight ?? 10) * 3.78}px ${(tag.tsA4MarginBottom ?? 12) * 3.78}px ${(tag.tsA4MarginLeft ?? 10) * 3.78}px`,
+                    boxSizing: 'border-box',
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${tag.tsA4Cols ?? 4}, ${tag.tsWidth * 3.78}px)`,
+                    gridTemplateRows: `repeat(${tag.tsA4Rows ?? 10}, ${tag.tsHeight * 3.78}px)`,
+                    columnGap: `${(tag.tsA4HSpace ?? 2) * 3.78}px`,
+                    rowGap: `${(tag.tsA4VSpace ?? 2) * 3.78}px`,
+                    transform: 'scale(0.8)',
+                    transformOrigin: 'top center',
+                    marginBottom: '-20%' // Offset the empty space left by scaling
+                  }}>
+                    {Array.from({ length: (tag.tsA4Rows ?? 10) * (tag.tsA4Cols ?? 4) }).map((_, i) => (
+                      <AutoScalingLabel 
+                        key={i} 
+                        tag={tag} 
+                        itemData={PREVIEW_ITEM} 
+                        onValidationUpdate={i === 0 ? setIsLabelValid : undefined} 
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <AutoScalingLabel 
+                    tag={tag} 
+                    itemData={PREVIEW_ITEM} 
+                    onValidationUpdate={setIsLabelValid} 
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -290,7 +380,7 @@ export default function Settings() {
         {/* Invoice Setting */}
         {activeTab === 'invoicesetting' && (
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', minHeight: '500px', overflow: 'hidden' }}>
-            <div style={{ width: '420px', padding: '24px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ width: '420px', padding: '16px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Label Width</div>
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -526,7 +616,7 @@ export default function Settings() {
       </div>
 
       {/* Footer */}
-      <div style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+      <div style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
         <button onClick={() => navigate(-1)} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>

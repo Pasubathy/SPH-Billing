@@ -98,8 +98,8 @@ export default function CreateSalesReturn() {
     if (!originalInvoiceNo) return;
     try {
         const [salesRes, returnsRes] = await Promise.all([
-            fetch('http://localhost:3000/api/sales'),
-            fetch('http://localhost:3000/api/sales-returns').catch(() => ({ ok: false, json: () => [] }))
+            fetch('/api/sales'),
+            fetch('/api/sales-returns').catch(() => ({ ok: false, json: () => [] }))
         ]);
         const sales = await salesRes.json();
         let allReturns = [];
@@ -189,7 +189,42 @@ export default function CreateSalesReturn() {
 
 
 
+  
   useEffect(() => {
+    if (location.state?.editMode && location.state?.invoiceData) {
+        const data = location.state.invoiceData;
+        setInvoiceNumber(data.invoiceNo || data.invoice_no || data.piNo || data.pi_no);
+        setBillingDate(data.date);
+        
+        if (typeof setActiveCustomer !== 'undefined') {
+           setActiveCustomer({ id: data.customerId || data.customer_id || 'walk-in', name: data.customerName || data.customer_name });
+        }
+        if (typeof setActiveVendor !== 'undefined') {
+           setActiveVendor({ id: data.vendorId || data.vendor_id, name: data.vendorName || data.vendor_name });
+        }
+        
+        const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+        setBillingRows(parsedItems.map(it => ({
+            ...it,
+            item: it,
+            qty: parseFloat(it.qty) || 1,
+            rate: parseFloat(it.rate) || 0,
+            disc: parseFloat(it.disc) || 0,
+            unitIndex: 0,
+            unitOptions: [{ label: it.unit || 'Unit', price: parseFloat(it.rate) || 0, isBase: true }]
+        })));
+        
+        if (typeof setManualReceivedAmt !== 'undefined') setManualReceivedAmt(data.paidAmount || data.paid_amount || 0);
+        if (typeof setManualPaidAmt !== 'undefined') setManualPaidAmt(data.paidAmount || data.paid_amount || 0);
+        if (typeof setDiscountVal !== 'undefined') {
+            setDiscountVal(data.discountAmount || data.discount_amount || 0);
+            setDiscountType('rupee');
+        }
+    }
+  }, [location]);
+
+  useEffect(() => {
+    if (location.state?.editMode) return;
     // Set today's date
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, '0');
@@ -199,9 +234,9 @@ export default function CreateSalesReturn() {
 
     // Fetch data
     Promise.all([
-        fetch('http://localhost:3000/api/items').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/units').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/customers').then(res => res.json()).catch(() => [])
+        fetch('/api/items').then(res => res.json()).catch(() => []),
+        fetch('/api/units').then(res => res.json()).catch(() => []),
+        fetch('/api/customers').then(res => res.json()).catch(() => [])
     ]).then(([items, units, customersData]) => {
         setAllItems(items);
         setAllUnits(units);
@@ -250,8 +285,8 @@ export default function CreateSalesReturn() {
             
             // Fetch maxQty asynchronously for edit mode
             Promise.all([
-                fetch('http://localhost:3000/api/sales').then(res => res.json()).catch(() => []),
-                fetch('http://localhost:3000/api/sales-returns').then(res => res.json()).catch(() => [])
+                fetch('/api/sales').then(res => res.json()).catch(() => []),
+                fetch('/api/sales-returns').then(res => res.json()).catch(() => [])
             ]).then(([sales, returns]) => {
                 const sale = sales.find(s => s.invoiceNo === editSale.invoiceNo || s.invoiceNumber === editSale.invoiceNo);
                 if (sale && sale.items) {
@@ -278,7 +313,7 @@ export default function CreateSalesReturn() {
                 }
             });
         } else {
-            fetch('http://localhost:3000/api/return-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
+            fetch('/api/return-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
                 setReturnNumber('RET' + String(counterData.counter || 1).padStart(3, '0'));
             });
         }
@@ -441,12 +476,16 @@ export default function CreateSalesReturn() {
             customerName: activeCustomer ? activeCustomer.name : 'Walk In Customer',
             date: billingDate,
             refundAmount: refundAmt,
-            items: itemsPayload
+            refundAmount: refundAmt,
+            items: itemsPayload,
+            updatedAt: location.state?.editMode ? location.state.returnData.updated_at : undefined
         };
 
+        const targetEndpoint = location.state?.editMode ? `/api/sales-returns/${location.state.returnData.id}` : '/api/sales-returns/create';
+
         const authToken = localStorage.getItem('sph_session_token');
-        const saveRes = await fetch('http://localhost:3000/api/sales-returns/create', {
-            method: 'POST',
+        const saveRes = await fetch(targetEndpoint, {
+            method: location.state?.editMode ? 'PUT' : 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
@@ -796,7 +835,7 @@ export default function CreateSalesReturn() {
         {/* Barcode Scanner Modal */}
         {showScanner && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
+                <div style={{ background: 'white', padding: '16px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Scan Tag</h3>
                         <X style={{ cursor: 'pointer', width: '20px', height: '20px' }} onClick={stopScanner} />

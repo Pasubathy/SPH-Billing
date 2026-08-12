@@ -53,8 +53,8 @@ const ViewPurchaseInvoice = () => {
         const loadData = async () => {
             try {
                 const [vRes, piRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-invoices').catch(() => ({ json: () => [] }))
+                    fetch('/api/vendors').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-invoices').catch(() => ({ json: () => [] }))
                 ]);
                 const vData = await vRes.json();
                 const piData = await piRes.json();
@@ -96,7 +96,7 @@ const ViewPurchaseInvoice = () => {
         setIsCancelling(true);
         try {
             const token = localStorage.getItem('authToken');
-            const res = await fetch(`http://localhost:3000/api/purchases/${currentPI.id}/cancel`, {
+            const res = await fetch(`/api/purchases/${currentPI.id}/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ reason: cancelReason.trim() })
@@ -111,7 +111,7 @@ const ViewPurchaseInvoice = () => {
             setCancelReason('');
             
             // Refresh from backend
-            const refreshRes = await fetch('http://localhost:3000/api/purchase-invoices', {
+            const refreshRes = await fetch('/api/purchase-invoices', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (refreshRes.ok) {
@@ -135,7 +135,7 @@ const ViewPurchaseInvoice = () => {
             paymentTerms: currentPI.paymentTerms || currentPI.payment_terms || '',
             note: currentPI.note || ''
         });
-        setShowEditModal(true);
+        navigate('/purchase-invoice/create', { state: { editMode: true, invoiceData: currentPI } });
     };
 
     const handleEditSave = async () => {
@@ -149,7 +149,7 @@ const ViewPurchaseInvoice = () => {
             if (editFields.paymentTerms !== undefined) payload.paymentTerms = editFields.paymentTerms;
             if (editFields.note !== undefined) payload.note = editFields.note;
 
-            const res = await fetch(`http://localhost:3000/api/purchases/${currentPI.id}`, {
+            const res = await fetch(`/api/purchases/${currentPI.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(payload)
@@ -524,9 +524,12 @@ const ViewPurchaseInvoice = () => {
                             <button onClick={() => setSearchQuery('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                                 <X size={18} color="var(--text-muted)" />
                             </button>
-                                <div style={{ flex: 1, overflowY: 'auto' }}>
+                        )}
+                    </div>
+                    {/* List Items */}
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
                         {filteredPIs.length === 0 ? (
-                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No invoices found</div>
+                            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No invoices found</div>
                         ) : (
                             filteredPIs.map(s => {
                                 const total = parseFloat(s.totalAmount || s.amount || s.grandTotal) || 0;
@@ -572,7 +575,7 @@ const ViewPurchaseInvoice = () => {
                 {/* Right Preview */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F8FAFC', overflowY: 'auto' }}>
                     {/* Header Actions */}
-                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button onClick={() => navigate('/purchase-invoice')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-muted)', background: 'white', cursor: 'pointer' }}>
                                 <ChevronLeft size={16} />
@@ -583,7 +586,7 @@ const ViewPurchaseInvoice = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                             {currentPI && !isLegacy(currentPI) && !isCancelled(currentPI) && (
                                 <button onClick={openEditModal} style={{ height: '32px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 12px', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'white', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                                    <Edit3 size={14} /> Edit Details
+                                    <Edit3 size={14} /> Edit Transaction
                                 </button>
                             )}
                             {currentPI && !isLegacy(currentPI) && !isCancelled(currentPI) && (
@@ -608,7 +611,7 @@ const ViewPurchaseInvoice = () => {
                     )}
 
                     {/* Preview Area */}
-                    <div style={{ padding: '24px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+                    <div style={{ padding: '16px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
                         <div 
                             dangerouslySetInnerHTML={{ __html: generateHTML(currentPI) }} 
                             style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
@@ -618,7 +621,7 @@ const ViewPurchaseInvoice = () => {
             </div>
 
             {/* Footer */}
-            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
+            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
                 <div className="footer-left">
                     <button onClick={() => navigate('/purchase-invoice')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
                         <ChevronLeft size={16} /> Back

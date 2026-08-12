@@ -47,7 +47,43 @@ export default function CreatePurchaseReturn() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  
   useEffect(() => {
+    if (location.state?.editMode && location.state?.returnData) {
+        const data = location.state.returnData;
+        setPrNo(data.prNo || data.pr_no || '');
+        setReturnDate(data.date || '');
+        
+        setSelectedVendorId(data.vendorId || data.vendor_id || null);
+        setVendor(data.vendorName || data.vendor_name || '');
+        
+        setSelectedInvoiceId(data.invoiceId || data.invoice_id || '');
+        setRefNo(data.refNo || data.ref_no || '');
+        setPaymentTerms(data.paymentTerms || data.payment_terms || 'None');
+        setDueDate(data.dueDate || data.due_date || '');
+        
+        const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+        setItems(parsedItems.map(it => ({
+            code: it.code || '',
+            name: it.name || 'Unknown Item',
+            hsn: it.hsn || '',
+            qty: parseFloat(it.qty) || 1,
+            unit: it.unit || 'Nos',
+            rate: parseFloat(it.rate) || 0,
+            amount: (parseFloat(it.qty) || 1) * (parseFloat(it.rate) || 0),
+            discount: parseFloat(it.disc || it.discount) || 0,
+            tax: parseFloat(it.taxPercent || it.tax) || 0,
+            isNew: false
+        })));
+        
+        setPaidAmount(data.paidAmount || data.paid_amount || 0);
+        setDiscountAmount(data.discountAmount || data.discount_amount || 0);
+        setPrNote(data.note || '');
+    }
+  }, [location]);
+
+  useEffect(() => {
+    if (location.state?.editMode) return;
     // Set today's date
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, '0');
@@ -56,7 +92,7 @@ export default function CreatePurchaseReturn() {
     setReturnDate(`${yyyy}-${mm}-${dd}`);
 
     // Fetch PR counter
-    fetch('http://localhost:3000/api/pret-counter')
+    fetch('/api/pret-counter')
       .then(res => res.json())
       .then(data => {
         setPrNo('PRET' + String(data.counter || 1).padStart(3, '0'));
@@ -65,9 +101,9 @@ export default function CreatePurchaseReturn() {
 
     // Fetch Purchase Invoices, Vendors, and Returns
     Promise.all([
-        fetch('http://localhost:3000/api/purchase-invoices').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/vendors').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/purchase-returns').then(res => res.json()).catch(() => [])
+        fetch('/api/purchase-invoices').then(res => res.json()).catch(() => []),
+        fetch('/api/vendors').then(res => res.json()).catch(() => []),
+        fetch('/api/purchase-returns').then(res => res.json()).catch(() => [])
     ]).then(([piData, vendorData, prData]) => {
         setPurchaseInvoices(piData);
         setVendors(vendorData);
@@ -260,12 +296,15 @@ export default function CreatePurchaseReturn() {
         })),
         cashReceived: parseFloat(paidAmount) || 0,
         date: returnDate,
-        note: prNote
+        note: prNote,
+        updatedAt: location.state?.editMode ? location.state.returnData.updated_at : undefined
       };
 
+      const targetEndpoint = location.state?.editMode ? `/api/purchase-returns/${location.state.returnData.id}` : '/api/purchase-returns/create';
+
       const authToken = localStorage.getItem('sph_session_token');
-      const saveRes = await fetch('http://localhost:3000/api/purchase-returns/create', {
-        method: 'POST',
+      const saveRes = await fetch(targetEndpoint, {
+        method: location.state?.editMode ? 'PUT' : 'POST',
         headers: { 
           'Content-Type': 'application/json',
           ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
@@ -331,20 +370,20 @@ export default function CreatePurchaseReturn() {
       </style>
       
       {/* Page Header */}
-      <div className="page-header" style={{ height: '45px', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+      <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => navigate('/purchase-return')}>
             <ChevronLeft size={20} color="var(--text-main)" />
             <h1 className="page-title" style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-main)' }}>{isEditMode ? 'Edit Purchase Return' : `${prNo} (New Return)`}</h1>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px', paddingBottom: '100px', background: '#F8FAFC' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px', background: '#F8FAFC' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           {/* Vendor Details */}
           <div className="create-card">
             <div className="create-card-title" style={{ background: '#F3F4F6', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', fontWeight: '600', fontSize: '14px', color: 'var(--text-main)' }}>Vendor Details</div>
-            <div className="create-card-body" style={{ padding: '24px' }}>
+            <div className="create-card-body" style={{ padding: '16px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px 20px' }}>
                 
                 {/* Row 1 */}
@@ -434,7 +473,7 @@ export default function CreatePurchaseReturn() {
                   <tbody>
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan="12" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic' }}>
+                        <td colSpan="12" style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic' }}>
                           Select a Purchase Invoice to view returnable items.
                         </td>
                       </tr>
@@ -530,7 +569,7 @@ export default function CreatePurchaseReturn() {
         </div>
       </div>
 
-      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', boxSizing: 'border-box' }}>
+      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', boxSizing: 'border-box' }}>
         <button onClick={() => navigate('/purchase-return')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>

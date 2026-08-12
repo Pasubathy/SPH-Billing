@@ -13,9 +13,9 @@ const Vendors = () => {
         const loadData = async () => {
             try {
                 const [vRes, piRes, prRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-invoices').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-returns').catch(() => ({ json: () => [] }))
+                    fetch('/api/vendors').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-invoices').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-returns').catch(() => ({ json: () => [] }))
                 ]);
                 const vData = await vRes.json();
                 const piData = await piRes.json();
@@ -80,7 +80,7 @@ const Vendors = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', backgroundColor: '#F8FAFC' }}>
             {/* Tabs */}
-            <div className="page-tabs" style={{ padding: '0 24px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
+            <div className="page-tabs" style={{ padding: '0 16px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
                 <NavLink to="/vendors" className="tab active">Vendor</NavLink>
                 <NavLink to="/purchase-invoice" className="tab">Purchase Invoice</NavLink>
                 <NavLink to="/purchase-return" className="tab">Purchase Return</NavLink>

@@ -49,8 +49,8 @@ const ViewPurchaseReturnsInvoice = () => {
         const loadData = async () => {
             try {
                 const [vRes, prRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-returns').catch(() => ({ json: () => [] }))
+                    fetch('/api/vendors').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-returns').catch(() => ({ json: () => [] }))
                 ]);
                 const vData = await vRes.json();
                 const prData = await prRes.json();
@@ -92,7 +92,7 @@ const ViewPurchaseReturnsInvoice = () => {
         setIsCancelling(true);
         try {
             const token = localStorage.getItem('authToken');
-            const res = await fetch(`http://localhost:3000/api/purchase-returns/${currentSale.id}/cancel`, {
+            const res = await fetch(`/api/purchase-returns/${currentSale.id}/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ reason: cancelReason.trim() })
@@ -107,7 +107,7 @@ const ViewPurchaseReturnsInvoice = () => {
             setCancelReason('');
 
             // Refresh from backend
-            const refreshRes = await fetch('http://localhost:3000/api/purchase-returns', {
+            const refreshRes = await fetch('/api/purchase-returns', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (refreshRes.ok) {
@@ -476,7 +476,8 @@ const ViewPurchaseReturnsInvoice = () => {
                     {/* List Items */}
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                         {filteredSales.length === 0 ? (
-                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)',                        ) : (
+                            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>No returns found</div>
+                        ) : (
                             filteredSales.map(s => {
                                 const total = parseFloat(s.totalAmount || s.grandTotal) || 0;
                                 const received = parseFloat(s.paidAmount || s.receivedAmount) || 0;
@@ -499,7 +500,7 @@ const ViewPurchaseReturnsInvoice = () => {
                                     >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
                                             <div style={{ fontWeight: '600', fontSize: '13px', color: isSelected ? '#000B58' : '#1E293B' }}>{s.returnNo}</div>
-                                            <div style={{ fontSize: '13px', fontWeight 600, color: '#1e293b' }}>₹{total.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>₹{total.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{s.vendorName || 'Walk In Vendor'}</div>
@@ -521,7 +522,7 @@ const ViewPurchaseReturnsInvoice = () => {
                 {/* Right Preview */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F8FAFC', overflowY: 'auto' }}>
                     {/* Header Actions */}
-                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid #FCA5A5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid #FCA5A5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button onClick={() => navigate('/purchase-return')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-muted)', background: 'white', cursor: 'pointer' }}>
                                 <ChevronLeft size={16} />
@@ -552,7 +553,7 @@ const ViewPurchaseReturnsInvoice = () => {
                     )}
 
                     {/* Preview Area */}
-                    <div style={{ padding: '24px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+                    <div style={{ padding: '16px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
                         <div 
                             dangerouslySetInnerHTML={{ __html: generateHTML(currentSale) }} 
                             style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
@@ -562,7 +563,7 @@ const ViewPurchaseReturnsInvoice = () => {
             </div>
 
             {/* Footer */}
-            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
+            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
                 <div className="footer-left">
                     <button onClick={() => navigate('/purchase-return')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
                         <ChevronLeft size={16} /> Back

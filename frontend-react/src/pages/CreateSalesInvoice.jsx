@@ -97,7 +97,42 @@ export default function CreateSalesInvoice() {
 
 
 
+  
   useEffect(() => {
+    if (location.state?.editMode && location.state?.invoiceData) {
+        const data = location.state.invoiceData;
+        setInvoiceNumber(data.invoiceNo || data.invoice_no || data.piNo || data.pi_no);
+        setBillingDate(data.date);
+        
+        if (typeof setActiveCustomer !== 'undefined') {
+           setActiveCustomer({ id: data.customerId || data.customer_id || 'walk-in', name: data.customerName || data.customer_name });
+        }
+        if (typeof setActiveVendor !== 'undefined') {
+           setActiveVendor({ id: data.vendorId || data.vendor_id, name: data.vendorName || data.vendor_name });
+        }
+        
+        const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+        setBillingRows(parsedItems.map(it => ({
+            ...it,
+            item: it,
+            qty: parseFloat(it.qty) || 1,
+            rate: parseFloat(it.rate) || 0,
+            disc: parseFloat(it.disc) || 0,
+            unitIndex: 0,
+            unitOptions: [{ label: it.unit || 'Unit', price: parseFloat(it.rate) || 0, isBase: true }]
+        })));
+        
+        if (typeof setManualReceivedAmt !== 'undefined') setManualReceivedAmt(data.paidAmount || data.paid_amount || 0);
+        if (typeof setManualPaidAmt !== 'undefined') setManualPaidAmt(data.paidAmount || data.paid_amount || 0);
+        if (typeof setDiscountVal !== 'undefined') {
+            setDiscountVal(data.discountAmount || data.discount_amount || 0);
+            setDiscountType('rupee');
+        }
+    }
+  }, [location]);
+
+  useEffect(() => {
+    if (location.state?.editMode) return;
     // Set today's date
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, '0');
@@ -107,9 +142,9 @@ export default function CreateSalesInvoice() {
 
     // Fetch data (sales-returns fetch removed — credit now from customers.storeCreditBalance)
     Promise.all([
-        fetch('http://localhost:3000/api/items').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/units').then(res => res.json()).catch(() => []),
-        fetch('http://localhost:3000/api/customers').then(res => res.json()).catch(() => [])
+        fetch('/api/items').then(res => res.json()).catch(() => []),
+        fetch('/api/units').then(res => res.json()).catch(() => []),
+        fetch('/api/customers').then(res => res.json()).catch(() => [])
     ]).then(([items, units, customersData]) => {
         setAllItems(items);
         setAllUnits(units);
@@ -119,7 +154,7 @@ export default function CreateSalesInvoice() {
             setActiveCustomer(walkInSaved);
         }
 
-        fetch('http://localhost:3000/api/invoice-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
+        fetch('/api/invoice-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
             setInvoiceNumber('INV' + String(counterData.counter || 1).padStart(3, '0'));
         });
     });
@@ -302,13 +337,14 @@ export default function CreateSalesInvoice() {
             manualInvoiceNumber: null,
             // Store Credit: send apply-intent and advisory amount; backend validates from DB
             applyStoreCredit: applyCredit && (activeCustomer?.id !== 'walk-in') ? true : false,
-            requestedCredit: applyCredit ? appliedCreditAmt : 0
+            requestedCredit: applyCredit ? appliedCreditAmt : 0,
+            updatedAt: location.state?.editMode ? location.state.invoiceData.updated_at : undefined
         };
 
-        const targetEndpoint = 'http://localhost:3000/api/sales/create';
+        const targetEndpoint = location.state?.editMode ? `/api/sales/${location.state.invoiceData.id}` : '/api/sales/create';
 
         const saveRes = await fetch(targetEndpoint, {
-            method: 'POST',
+            method: location.state?.editMode ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
@@ -755,7 +791,7 @@ export default function CreateSalesInvoice() {
         {/* Barcode Scanner Modal */}
         {showScanner && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
+                <div style={{ background: 'white', padding: '16px', borderRadius: '12px', width: '500px', maxWidth: '90%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Scan Tag</h3>
                         <X style={{ cursor: 'pointer', width: '20px', height: '20px' }} onClick={stopScanner} />

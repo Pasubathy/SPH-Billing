@@ -52,9 +52,9 @@ export default function CreateItem() {
     const fetchData = async () => {
       try {
         const [resCats, resUnits, resItems] = await Promise.all([
-          fetch('http://localhost:3000/api/categories').then(r => r.json()),
-          fetch('http://localhost:3000/api/units').then(r => r.json()),
-          fetch('http://localhost:3000/api/items').then(r => r.json())
+          fetch('/api/categories').then(r => r.json()),
+          fetch('/api/units').then(r => r.json()),
+          fetch('/api/items').then(r => r.json())
         ]);
         setCategories(resCats || []);
         setUnits(resUnits || []);
@@ -330,7 +330,7 @@ export default function CreateItem() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/items', {
+      const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedItems)
@@ -361,7 +361,7 @@ export default function CreateItem() {
           setConversions([]);
           setActiveImageIndex(-1);
           // Refetch items list to avoid code collision
-          const resItms = await fetch('http://localhost:3000/api/items').then(r => r.json());
+          const resItms = await fetch('/api/items').then(r => r.json());
           setAllItems(resItms || []);
         }
       } else {
@@ -374,12 +374,15 @@ export default function CreateItem() {
   };
 
   // Print Tag execute
-  const handlePrintTag = () => {
+  const handlePrintTag = async () => {
     let tsData = {};
     try {
-      const saved = localStorage.getItem('tagSettings');
-      if (saved) tsData = JSON.parse(saved);
-    } catch(e) {}
+        const saved = localStorage.getItem('tagSettings');
+        if (saved) tsData = JSON.parse(saved);
+    } catch (err) {
+        console.error('Failed to parse tag settings', err);
+        tsData = {};
+    }
 
     const width = tsData.tsWidth || 50;
     const height = tsData.tsHeight || 25;
@@ -535,7 +538,7 @@ body {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header */}
-      <div className="page-header" style={{ height: '45px', padding: '0 24px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+      <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
         <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-main)' }}>
           {editCodeParam ? 'Edit Item' : 'Create Item'}
         </h1>
@@ -795,7 +798,7 @@ body {
       </div>
 
       {/* Sticky Bottom Actions Bar */}
-      <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+      <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
         <button onClick={() => navigate('/items')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>
@@ -838,7 +841,7 @@ body {
               <h3 style={{ margin: 0, fontSize: '15px' }}>Tag Preview</h3>
               <button type="button" onClick={() => setShowTagPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-            <div style={{ padding: '32px 24px', background: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ padding: '32px 16px', background: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{ background: 'white', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', boxSizing: 'border-box' }}>
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${code}`} style={{ width: '50px', height: '50px', objectFit: 'contain' }} alt="QR" />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>

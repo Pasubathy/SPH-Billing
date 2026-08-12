@@ -18,7 +18,7 @@ const Units = () => {
     const [toast, setToast] = useState(null);
 
     useEffect(() => {
-        fetch('http://localhost:3000/api/units')
+        fetch('/api/units')
             .then(res => res.json())
             .then(data => {
                 const mapped = data.map(u => ({
@@ -59,7 +59,7 @@ const Units = () => {
                 acceptDecimal: u.allowDecimal === 'Yes'
             }));
             
-            const res = await fetch('http://localhost:3000/api/units', {
+            const res = await fetch('/api/units', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -95,7 +95,7 @@ const Units = () => {
                     unitPrefix: u.shortName,
                     acceptDecimal: u.allowDecimal === 'Yes'
                 }));
-                await fetch('http://localhost:3000/api/units', {
+                await fetch('/api/units', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -118,7 +118,7 @@ const Units = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
             {/* Tabs */}
-            <div className="page-tabs" style={{ padding: '0 24px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: '#F8F9FA' }}>
+            <div className="page-tabs" style={{ padding: '0 16px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: '#F8F9FA' }}>
                 <NavLink to="/items" className="tab">Item List</NavLink>
                 <NavLink to="/categories" className="tab">Category</NavLink>
                 <NavLink to="/units" className="tab active">Unit</NavLink>
@@ -155,129 +155,116 @@ const Units = () => {
                 </div>
 
                 {/* Table Area */}
-                <div className="units-content-wrapper" style={{ flex: 1, overflowY: 'auto' }}>
-                    <div className="units-table" style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px' }}>
-                        <div className="units-header-row unified-row" style={{ display: 'flex', backgroundColor: '#F8FAFC', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', height: '40px', fontWeight: '600' }}>
-                            <div className="col-sno-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>S. No.</div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-name-inner" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 12px' }}>Unit Name</div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-shortname-inner" style={{ width: '200px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>Short Name</div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-decimal-inner" style={{ width: '150px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>Decimal</div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-action-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Action</div>
-                        </div>
-                        
-                        <div className="units-body">
+                <div className="vendor-table-container" style={{ margin: '0 16px 16px 16px', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
+                    <table className="vendor-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ height: '40px' }}>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '80px' }}>S. No.</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>Unit Name</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '200px' }}>Short Name</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Decimal</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '80px' }}>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                             {filteredUnits.map((u, idx) => {
                                 const realIndex = units.findIndex(orig => orig === u);
                                 return (
-                                    <div key={idx} className="unit-row unified-row" style={{ display: 'flex', minHeight: '40px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
-                                        <div className="col-sno-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{idx + 1}</div>
-                                        <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                                        <div className="col-name-inner" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 12px' }}>
+                                    <tr key={idx} style={{ height: '40px', backgroundColor: 'white' }}>
+                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{idx + 1}</td>
+                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
                                             <input 
                                                 type="text" 
                                                 value={u.name}
                                                 onChange={(e) => updateUnit(realIndex, 'name', e.target.value)}
-                                                className="inner-input"
-                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit' }}
+                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                             />
-                                        </div>
-                                        <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                                        <div className="col-shortname-inner" style={{ width: '200px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>
+                                        </td>
+                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
                                             <input 
                                                 type="text" 
                                                 value={u.shortName}
                                                 onChange={(e) => updateUnit(realIndex, 'shortName', e.target.value)}
-                                                className="inner-input"
-                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit' }}
+                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                             />
-                                        </div>
-                                        <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                                        <div className="col-decimal-inner" style={{ width: '150px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>
-                                            <CustomSelect
-                                                value={u.allowDecimal}
-                                                onChange={(val) => updateUnit(realIndex, 'allowDecimal', val)}
-                                                options={[
-                                                    { value: 'Yes', label: 'Yes' },
-                                                    { value: 'No', label: 'No' }
-                                                ]}
-                                                height="30px"
-                                            />
-                                        </div>
-                                        <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                                        <div className="col-action-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        </td>
+                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                            <div style={{ height: '30px', display: 'flex', alignItems: 'center' }}>
+                                                <CustomSelect
+                                                    value={u.allowDecimal}
+                                                    onChange={(val) => updateUnit(realIndex, 'allowDecimal', val)}
+                                                    options={[
+                                                        { value: 'Yes', label: 'Yes' },
+                                                        { value: 'No', label: 'No' }
+                                                    ]}
+                                                    height="30px"
+                                                />
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
                                             <button 
-                                                className="btn-icon-danger delete-btn" 
-                                                style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                                style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                                                 onClick={() => { setDeleteIndex(realIndex); setShowDeleteModal(true); }}
                                             >
                                                 <Trash2 size={16} />
                                             </button>
-                                        </div>
-                                    </div>
+                                        </td>
+                                    </tr>
                                 );
                             })}
-                        </div>
-
-                        {/* Add Row */}
-                        <div className="unit-row unified-row" style={{ display: 'flex', minHeight: '40px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
-                            <div className="col-sno-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{units.length + 1}</div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-name-inner" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 12px' }}>
-                                <input 
-                                    type="text" 
-                                    placeholder="Unit Name" 
-                                    value={newName}
-                                    onChange={(e) => setNewName(e.target.value)}
-                                    className="inner-input"
-                                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit' }}
-                                />
-                            </div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-shortname-inner" style={{ width: '200px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>
-                                <input 
-                                    type="text" 
-                                    placeholder="Short Name" 
-                                    value={newShortName}
-                                    onChange={(e) => setNewShortName(e.target.value)}
-                                    className="inner-input"
-                                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit' }}
-                                />
-                            </div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-decimal-inner" style={{ width: '150px', display: 'flex', alignItems: 'center', padding: '0 12px' }}>
-                                    <CustomSelect
-                                        value={newAllowDecimal}
-                                        onChange={setNewAllowDecimal}
-                                        options={[
-                                            { value: 'Yes', label: 'Yes' },
-                                            { value: 'No', label: 'No' }
-                                        ]}
-                                        height="30px"
+                            
+                            {/* Add Row */}
+                            <tr style={{ height: '40px', backgroundColor: 'white' }}>
+                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{units.length + 1}</td>
+                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Unit Name" 
+                                        value={newName}
+                                        onChange={(e) => setNewName(e.target.value)}
+                                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                     />
-                            </div>
-                            <div className="vertical-divider" style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                            <div className="col-action-inner" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <button 
-                                    className="btn-icon-primary" 
-                                    style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                                    onClick={handleAdd}
-                                >
-                                    <Plus size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                                </td>
+                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Short Name" 
+                                        value={newShortName}
+                                        onChange={(e) => setNewShortName(e.target.value)}
+                                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
+                                    />
+                                </td>
+                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                    <div style={{ height: '30px', display: 'flex', alignItems: 'center' }}>
+                                        <CustomSelect
+                                            value={newAllowDecimal}
+                                            onChange={setNewAllowDecimal}
+                                            options={[
+                                                { value: 'Yes', label: 'Yes' },
+                                                { value: 'No', label: 'No' }
+                                            ]}
+                                            height="30px"
+                                        />
+                                    </div>
+                                </td>
+                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
+                                    <button 
+                                        style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                        onClick={handleAdd}
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
             {/* Delete Modal */}
             {showDeleteModal && (
                 <div className="modal show" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="modal-content" style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '320px', textAlign: 'center' }}>
+                    <div className="modal-content" style={{ background: 'white', padding: '16px', borderRadius: '12px', width: '320px', textAlign: 'center' }}>
                         <h3 className="modal-title" style={{ marginTop: 0, marginBottom: '12px', fontSize: '18px' }}>Delete Unit</h3>
                         <p className="modal-message" style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>Do you want to delete this item?</p>
                         <div className="modal-actions" style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -289,7 +276,7 @@ const Units = () => {
             )}
 
             {/* Sticky Bottom Bar */}
-            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)' }}>
+            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)' }}>
                 <button className="btn btn-primary" onClick={handleSave} style={{ backgroundColor: '#000B58', color: 'white', padding: '8px 32px' }}>Save</button>
             </div>
 

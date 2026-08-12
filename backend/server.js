@@ -1362,13 +1362,13 @@ app.post('/api/sales/create', async (req, res) => {
             `INSERT INTO sales_invoices (
                 id, invoice_no, date, ref_no, due_date, payment_terms, customer_id, customer_name,
                 sub_total, discount_percent, discount_amount, total_tax, amount,
-                paid_amount, pending_to_receive, note, items
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                paid_amount, pending_to_receive, note, items, store_credit_applied
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
             [
                 sid, finalInvoiceNo, parsedDate, refNo || '', parsedDueDate, paymentTerms || '',
                 customerId || null, customerName || 'Walk In Customer', parsedSubTotal, 0,
                 parsedDiscount, parsedTaxAmount, backendGrandTotal, receivedAmount, backendNetUnpaid,
-                '', JSON.stringify(items)
+                '', JSON.stringify(items), creditUsed
             ]
         );
 
@@ -3128,6 +3128,306 @@ app.post('/api/vendor-payments/:id/cancel', async (req, res) => {
 });
 
 // 3. POST /api/sales-returns/:id/cancel
+// PUT /api/sales-returns/:id (Full Edit)
+app.put('/api/sales-returns/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
+    const returnId = req.params.id;
+    const {
+        date,
+        customerId,
+        invoiceId,
+        invoiceNo,
+        grandTotal: clientGrandTotal,
+        refundAmount: clientRefundAmount,
+        storeCredit: clientStoreCredit,
+        items
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Transaction Initialization & Locking
+        const retRes = await client.query(
+            "SELECT * FROM sales_returns WHERE id = $1 FOR UPDATE",
+            [returnId]
+        );
+        if (retRes.rows.length === 0) {
+            throw new Error('Sales Return not found');
+        }
+        const oldRet = retRes.rows[0];
+
+        if (updatedAt) {
+            const dbUpdatedAt = new Date(oldRet.updated_at).getTime();
+            const reqUpdatedAt = new Date(updatedAt).getTime();
+            if (dbUpdatedAt !== reqUpdatedAt && !isNaN(dbUpdatedAt) && !isNaN(reqUpdatedAt)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'This transaction has been modified by another user.\nPlease refresh the document and try again.' });
+            }
+        }
+
+        // 2. Validation & Restrictions Check
+        if (oldRet.status === 'CANCELLED') {
+            throw new Error('Cannot edit a cancelled return.');
+        }
+
+        if (customerId && String(customerId) !== String(oldRet.customer_id)) {
+            throw new Error('Changing the Customer is not permitted. Please cancel this transaction and create a new one.');
+        }
+
+        // Validate new items
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('Return must contain at least one line item');
+        }
+        for (const it of items) {
+            const qty = parseFloat(it.qty);
+            if (isNaN(qty) || qty <= 0) {
+                throw new Error(`Invalid quantity (${it.qty}) for item: ${it.name || it.code}`);
+            }
+        }
+
+        const grandTotal = parseFloat(clientGrandTotal) || 0;
+        const refundAmount = parseFloat(clientRefundAmount) || 0;
+        const storeCredit = parseFloat(clientStoreCredit) || 0;
+
+        if (grandTotal < 0) throw new Error('Grand total cannot be negative');
+        if (refundAmount < 0) throw new Error('Refund amount cannot be negative');
+        if (storeCredit < 0) throw new Error('Store credit cannot be negative');
+        if (Math.abs(grandTotal - (refundAmount + storeCredit)) > 0.01) {
+            throw new Error('Refund + Store Credit must equal Grand Total');
+        }
+
+        // Parse Dates
+        let parsedDate = date;
+        if (parsedDate && parsedDate.includes('/')) {
+            const parts = parsedDate.split('/');
+            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDate) {
+            parsedDate = new Date().toISOString().split('T')[0];
+        }
+
+        // 3. Delta Calculation (Items)
+        const oldItems = typeof oldRet.items === 'string' ? JSON.parse(oldRet.items) : oldRet.items;
+        const itemDeltas = new Map(); 
+
+        for (const oldIt of oldItems) {
+            const itemId = String(oldIt.id || oldIt.item_id);
+            const qty = parseFloat(oldIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            }
+        }
+
+        for (const newIt of items) {
+            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const qty = parseFloat(newIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            }
+        }
+
+        for (const [itemId, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        }
+
+        // 4. Stock Validation
+        const itemIds = Array.from(itemDeltas.keys()).sort();
+        if (itemIds.length > 0) {
+            const dbItemsRes = await client.query(
+                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
+                [itemIds]
+            );
+
+            const dbItemsMap = new Map();
+            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemId);
+                if (!dbItem) throw new Error(`Item ID "${itemId}" not found in inventory`);
+                
+                const currentStock = parseFloat(dbItem.stock) || 0;
+                if (currentStock + deltaQty < 0) {
+                    throw new Error(`Insufficient stock for item "${dbItem.name}". Available: ${currentStock}`);
+                }
+            }
+
+            // Apply Stock Deltas
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                await client.query(`UPDATE items SET stock = stock + $1 WHERE id = $2`, [deltaQty, itemId]);
+            }
+        }
+
+        // 5. Applying New Financial Effects (Store Credit)
+        const actualCustomerId = oldRet.customer_id;
+        const oldStoreCredit = parseFloat(oldRet.store_credit) || 0;
+
+        if (actualCustomerId && String(actualCustomerId) !== 'walk-in') {
+            await client.query(`SELECT id FROM customers WHERE id = $1 FOR UPDATE`, [actualCustomerId]);
+            const creditDelta = storeCredit - oldStoreCredit;
+            if (Math.abs(creditDelta) > 0.0001) {
+                await client.query(`UPDATE customers SET store_credit_balance = COALESCE(store_credit_balance, 0) + $1 WHERE id = $2`, [creditDelta, actualCustomerId]);
+            }
+        }
+
+        // 6. Update Document
+        const updateQuery = `
+            UPDATE sales_returns SET
+                date = $1, invoice_id = $2, invoice_no = $3,
+                grand_total = $4, refund_amount = $5, store_credit = $6,
+                items = $7, updated_at = NOW()
+            WHERE id = $8 RETURNING *
+        `;
+        const updateRes = await client.query(updateQuery, [
+            parsedDate, invoiceId || null, invoiceNo || '', grandTotal, refundAmount, storeCredit,
+            JSON.stringify(items), returnId
+        ]);
+        const newRet = updateRes.rows[0];
+
+        // 7. Audit Logging
+        await insertAuditLog(client, { tableName: 'sales_returns', recordId: returnId, action: 'UPDATE', oldData: oldRet, newData: newRet, req, transactionId });
+        await client.query('COMMIT');
+        res.json({ success: true, data: newRet });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: e.message || 'Failed to update Sales Return' });
+    } finally {
+        client.release();
+    }
+});
+
+// PUT /api/purchase-returns/:id (Full Edit)
+app.put('/api/purchase-returns/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
+    const returnId = req.params.id;
+    const {
+        date, vendorId, invoiceId, invoiceNo,
+        grandTotal: clientGrandTotal, refundAmount: clientRefundAmount, storeCredit: clientStoreCredit, items, updatedAt
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const retRes = await client.query("SELECT * FROM purchase_returns WHERE id = $1 FOR UPDATE", [returnId]);
+        if (retRes.rows.length === 0) throw new Error('Purchase Return not found');
+        const oldRet = retRes.rows[0];
+
+        if (updatedAt) {
+            const dbUpdatedAt = new Date(oldRet.updated_at).getTime();
+            const reqUpdatedAt = new Date(updatedAt).getTime();
+            if (dbUpdatedAt !== reqUpdatedAt && !isNaN(dbUpdatedAt) && !isNaN(reqUpdatedAt)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'This transaction has been modified by another user.\nPlease refresh the document and try again.' });
+            }
+        }
+
+        if (oldRet.status === 'CANCELLED') throw new Error('Cannot edit a cancelled return.');
+        
+        if (vendorId && String(vendorId) !== String(oldRet.vendor_id)) {
+            throw new Error('Changing the Vendor is not permitted. Please cancel this transaction and create a new one.');
+        }
+
+        if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Return must contain at least one line item');
+        for (const it of items) {
+            const qty = parseFloat(it.qty);
+            if (isNaN(qty) || qty <= 0) throw new Error(`Invalid quantity (${it.qty}) for item: ${it.name || it.code}`);
+        }
+
+        const grandTotal = parseFloat(clientGrandTotal) || 0;
+        const refundAmount = parseFloat(clientRefundAmount) || 0;
+        const storeCredit = parseFloat(clientStoreCredit) || 0;
+
+        if (grandTotal < 0 || refundAmount < 0 || storeCredit < 0) throw new Error('Amounts cannot be negative');
+        if (Math.abs(grandTotal - (refundAmount + storeCredit)) > 0.01) throw new Error('Refund + Store Credit must equal Grand Total');
+
+        let parsedDate = date;
+        if (parsedDate && parsedDate.includes('/')) {
+            const parts = parsedDate.split('/');
+            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDate) {
+            parsedDate = new Date().toISOString().split('T')[0];
+        }
+
+        const oldItems = typeof oldRet.items === 'string' ? JSON.parse(oldRet.items) : oldRet.items;
+        const itemDeltas = new Map(); 
+
+        for (const oldIt of oldItems) {
+            const itemId = String(oldIt.id || oldIt.item_id);
+            const qty = parseFloat(oldIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            }
+        }
+
+        for (const newIt of items) {
+            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const qty = parseFloat(newIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            }
+        }
+
+        for (const [itemId, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        }
+
+        const itemIds = Array.from(itemDeltas.keys()).sort();
+        if (itemIds.length > 0) {
+            const dbItemsRes = await client.query(`SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`, [itemIds]);
+            const dbItemsMap = new Map();
+            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemId);
+                if (!dbItem) throw new Error(`Item ID "${itemId}" not found in inventory`);
+                const currentStock = parseFloat(dbItem.stock) || 0;
+                if (currentStock - deltaQty < 0) throw new Error(`Insufficient stock for item "${dbItem.name}". Available: ${currentStock}`);
+            }
+
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                await client.query(`UPDATE items SET stock = stock - $1 WHERE id = $2`, [deltaQty, itemId]);
+            }
+        }
+
+        // Store credit on vendor
+        const actualVendorId = oldRet.vendor_id;
+        const oldStoreCredit = parseFloat(oldRet.store_credit) || 0;
+
+        if (actualVendorId) {
+            await client.query(`SELECT id FROM vendors WHERE id = $1 FOR UPDATE`, [actualVendorId]);
+            const creditDelta = storeCredit - oldStoreCredit;
+            if (Math.abs(creditDelta) > 0.0001) {
+                await client.query(`UPDATE vendors SET store_credit_balance = COALESCE(store_credit_balance, 0) + $1 WHERE id = $2`, [creditDelta, actualVendorId]);
+            }
+        }
+
+        const updateQuery = `
+            UPDATE purchase_returns SET
+                date = $1, invoice_id = $2, invoice_no = $3,
+                grand_total = $4, refund_amount = $5, store_credit = $6,
+                items = $7, updated_at = NOW()
+            WHERE id = $8 RETURNING *
+        `;
+        const updateRes = await client.query(updateQuery, [
+            parsedDate, invoiceId || null, invoiceNo || '', grandTotal, refundAmount, storeCredit,
+            JSON.stringify(items), returnId
+        ]);
+        const newRet = updateRes.rows[0];
+
+        await insertAuditLog(client, { tableName: 'purchase_returns', recordId: returnId, action: 'UPDATE', oldData: oldRet, newData: newRet, req, transactionId });
+        await client.query('COMMIT');
+        res.json({ success: true, data: newRet });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: e.message || 'Failed to update Purchase Return' });
+    } finally {
+        client.release();
+    }
+});
+
+
 app.post('/api/sales-returns/:id/cancel', async (req, res) => {
     const transactionId = crypto.randomUUID();
     const returnId = req.params.id;
@@ -3516,7 +3816,7 @@ app.post('/api/sales/:id/cancel', async (req, res) => {
         
         await insertAuditLog(client, {
             tableName: 'sales_invoices',
-            recordId: saleId,
+            recordId: invoiceId,
             action: 'CANCEL',
             oldData: invoice,
             newData: { status: 'CANCELLED', cancelled_by: cancelledBy, cancellation_reason: reason },
@@ -3677,8 +3977,236 @@ app.post('/api/purchases/:id/cancel', async (req, res) => {
     }
 });
 
+// PUT /api/sales/:id (Full Edit)
+app.put('/api/sales/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
+    const invoiceId = req.params.id;
+    const {
+        date,
+        refNo,
+        dueDate,
+        paymentTerms,
+        customerId,
+        subTotal,
+        discount,
+        taxAmount,
+        grandTotal: clientGrandTotal,
+        receivedAmount: clientReceivedAmount,
+        items,
+        updatedAt
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Transaction Initialization & Locking
+        const invRes = await client.query(
+            "SELECT * FROM sales_invoices WHERE id = $1 FOR UPDATE",
+            [invoiceId]
+        );
+        if (invRes.rows.length === 0) {
+            throw new Error('Sales Invoice not found');
+        }
+        const oldInv = invRes.rows[0];
+
+        if (updatedAt) {
+            const dbUpdatedAt = new Date(oldInv.updated_at).getTime();
+            const reqUpdatedAt = new Date(updatedAt).getTime();
+            if (dbUpdatedAt !== reqUpdatedAt && !isNaN(dbUpdatedAt) && !isNaN(reqUpdatedAt)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'This transaction has been modified by another user.\nPlease refresh the document and try again.' });
+            }
+        }
+
+        // 2. Validation & Restrictions Check
+        if (oldInv.status === 'CANCELLED') {
+            throw new Error('Cannot edit a cancelled invoice.');
+        }
+
+        const receiptsCheck = await client.query(
+            "SELECT COUNT(*) as count FROM customer_receipt_allocations WHERE invoice_id = $1",
+            [invoiceId]
+        );
+        if (parseInt(receiptsCheck.rows[0].count) > 0) {
+            throw new Error('Cannot edit invoice: Receipts are already allocated to this invoice.');
+        }
+
+        const returnsCheck = await client.query(
+            "SELECT COUNT(*) as count FROM sales_returns WHERE invoice_id = $1 AND status = 'ACTIVE'",
+            [invoiceId]
+        );
+        if (parseInt(returnsCheck.rows[0].count) > 0) {
+            throw new Error('Cannot edit invoice: Sales Returns are linked to this invoice.');
+        }
+        
+        // Ensure customer identity cannot be changed
+        if (customerId && String(customerId) !== String(oldInv.customer_id)) {
+            throw new Error('Changing the Customer is not permitted. Please cancel this transaction and create a new one.');
+        }
+
+        // Validate new items
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('Invoice must contain at least one line item');
+        }
+        for (const it of items) {
+            const qty = parseFloat(it.qty);
+            if (isNaN(qty) || qty <= 0) {
+                throw new Error(`Invalid quantity (${it.qty}) for item: ${it.name || it.code}`);
+            }
+        }
+
+        const parsedSubTotal = parseFloat(subTotal) || 0;
+        const parsedDiscount = parseFloat(discount) || 0;
+        const parsedTaxAmount = parseFloat(taxAmount) || 0;
+        const grandTotal = parseFloat(clientGrandTotal) || 0;
+        const receivedAmount = parseFloat(clientReceivedAmount) || 0;
+
+        if (grandTotal < 0) throw new Error('Grand total cannot be negative');
+        if (receivedAmount < 0) throw new Error('Received amount cannot be negative');
+        if (receivedAmount > grandTotal) throw new Error('Received amount cannot exceed grand total');
+        
+        const netUnpaid = Math.max(0, grandTotal - receivedAmount);
+
+        // Parse Dates
+        let parsedDate = date;
+        if (parsedDate && parsedDate.includes('/')) {
+            const parts = parsedDate.split('/');
+            if (parsedDate.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDate) {
+            parsedDate = new Date().toISOString().split('T')[0];
+        }
+
+        let parsedDueDate = dueDate;
+        if (parsedDueDate && parsedDueDate.includes('/')) {
+            const parts = parsedDueDate.split('/');
+            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDueDate) {
+            parsedDueDate = null;
+        }
+
+        // 3. Delta Calculation (Items using primary key ID)
+        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : oldInv.items;
+        
+        const itemDeltas = new Map(); // key: item id, value: qty delta (new - old)
+
+        for (const oldIt of oldItems) {
+            const itemId = String(oldIt.id || oldIt.item_id);
+            const qty = parseFloat(oldIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            }
+        }
+
+        for (const newIt of items) {
+            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const qty = parseFloat(newIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            }
+        }
+
+        // Clean up 0 deltas
+        for (const [itemId, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        }
+
+        // 4. Stock Validation
+        const itemIds = Array.from(itemDeltas.keys()).sort();
+        if (itemIds.length > 0) {
+            const dbItemsRes = await client.query(
+                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
+                [itemIds]
+            );
+
+            const dbItemsMap = new Map();
+            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemId);
+                if (!dbItem) {
+                    throw new Error(`Item ID "${itemId}" not found in inventory`);
+                }
+                const currentStock = parseFloat(dbItem.stock) || 0;
+                // For sales, deltaQty > 0 means we need to take MORE from stock.
+                if (currentStock - deltaQty < 0) {
+                    throw new Error(`Insufficient stock for item "${dbItem.name}". Available: ${currentStock}, Edit requires deducting additional: ${deltaQty}`);
+                }
+            }
+
+            // Apply Stock Deltas
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                await client.query(
+                    `UPDATE items SET stock = stock - $1 WHERE id = $2`,
+                    [deltaQty, itemId]
+                );
+            }
+        }
+
+        // 5. Applying New Financial Effects
+        const oldNetUnpaid = parseFloat(oldInv.pending_to_receive) || 0;
+        const actualCustomerId = oldInv.customer_id;
+        
+        if (actualCustomerId && String(actualCustomerId) !== 'walk-in') {
+            await client.query(`SELECT id FROM customers WHERE id = $1 FOR UPDATE`, [actualCustomerId]);
+            const netUnpaidDelta = netUnpaid - oldNetUnpaid;
+            if (Math.abs(netUnpaidDelta) > 0.0001) {
+                await client.query(
+                    `UPDATE customers SET pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2`,
+                    [netUnpaidDelta, actualCustomerId]
+                );
+            }
+        }
+
+        // 6. Update the Document (do NOT update customer_id, customer_name)
+        const updateQuery = `
+            UPDATE sales_invoices SET
+                date = $1, ref_no = $2, due_date = $3, payment_terms = $4,
+                sub_total = $5, discount_amount = $6, total_tax = $7, amount = $8,
+                paid_amount = $9, pending_to_receive = $10, items = $11,
+                updated_at = NOW()
+            WHERE id = $12 RETURNING *
+        `;
+        const updateVals = [
+            parsedDate, refNo || '', parsedDueDate, paymentTerms || '',
+            parsedSubTotal, parsedDiscount, parsedTaxAmount, grandTotal,
+            receivedAmount, netUnpaid, JSON.stringify(items),
+            invoiceId
+        ];
+        const updateRes = await client.query(updateQuery, updateVals);
+        const newInv = updateRes.rows[0];
+
+        // 7. Audit Logging
+        await insertAuditLog(client, {
+            tableName: 'sales_invoices',
+            recordId: invoiceId,
+            action: 'UPDATE',
+            oldData: oldInv,
+            newData: newInv,
+            req,
+            transactionId
+        });
+
+        await client.query('COMMIT');
+        res.json({ success: true, data: newInv });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        if (e.code === '40P01') {
+            return res.status(400).json({ error: 'Transaction deadlock detected. Please try saving again.' });
+        } else if (e.code === '55P03') {
+            return res.status(400).json({ error: 'System is busy updating inventory for these items. Please try again.' });
+        }
+        res.status(400).json({ error: e.message || 'Failed to update transaction' });
+    } finally {
+        client.release();
+    }
+});
+
+
 // PATCH /api/sales/:id
-app.patch('/api/sales/:id', async (req, res) => {\n    const transactionId = crypto.randomUUID();
+app.patch('/api/sales/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const allowedFields = ['refNo', 'dueDate', 'paymentTerms', 'note'];
     
@@ -3774,8 +4302,234 @@ app.patch('/api/sales/:id', async (req, res) => {\n    const transactionId = cry
     }
 });
 
+// PUT /api/purchases/:id (Full Edit)
+app.put('/api/purchases/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
+    const invoiceId = req.params.id;
+    const {
+        date,
+        refNo,
+        dueDate,
+        paymentTerms,
+        vendorId,
+        subTotal,
+        discount,
+        taxAmount,
+        grandTotal: clientGrandTotal,
+        paidAmount: clientPaidAmount,
+        items
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Transaction Initialization & Locking
+        const invRes = await client.query(
+            "SELECT * FROM purchase_invoices WHERE id = $1 FOR UPDATE",
+            [invoiceId]
+        );
+        if (invRes.rows.length === 0) {
+            throw new Error('Purchase Invoice not found');
+        }
+        const oldInv = invRes.rows[0];
+
+        if (updatedAt) {
+            const dbUpdatedAt = new Date(oldInv.updated_at).getTime();
+            const reqUpdatedAt = new Date(updatedAt).getTime();
+            if (dbUpdatedAt !== reqUpdatedAt && !isNaN(dbUpdatedAt) && !isNaN(reqUpdatedAt)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'This transaction has been modified by another user.\nPlease refresh the document and try again.' });
+            }
+        }
+
+        // 2. Validation & Restrictions Check
+        if (oldInv.status === 'CANCELLED') {
+            throw new Error('Cannot edit a cancelled invoice.');
+        }
+
+        const paymentsCheck = await client.query(
+            "SELECT COUNT(*) as count FROM vendor_payment_allocations WHERE invoice_id = $1",
+            [invoiceId]
+        );
+        if (parseInt(paymentsCheck.rows[0].count) > 0) {
+            throw new Error('Cannot edit invoice: Vendor Payments are already allocated to this invoice.');
+        }
+
+        const returnsCheck = await client.query(
+            "SELECT COUNT(*) as count FROM purchase_returns WHERE invoice_id = $1 AND status = 'ACTIVE'",
+            [invoiceId]
+        );
+        if (parseInt(returnsCheck.rows[0].count) > 0) {
+            throw new Error('Cannot edit invoice: Purchase Returns are linked to this invoice.');
+        }
+
+        if (vendorId && String(vendorId) !== String(oldInv.vendor_id)) {
+            throw new Error('Changing the Vendor is not permitted. Please cancel this transaction and create a new one.');
+        }
+
+        // Validate new items
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('Invoice must contain at least one line item');
+        }
+        for (const it of items) {
+            const qty = parseFloat(it.qty);
+            if (isNaN(qty) || qty <= 0) {
+                throw new Error(`Invalid quantity (${it.qty}) for item: ${it.name || it.code}`);
+            }
+        }
+
+        const parsedSubTotal = parseFloat(subTotal) || 0;
+        const parsedDiscount = parseFloat(discount) || 0;
+        const parsedTaxAmount = parseFloat(taxAmount) || 0;
+        const grandTotal = parseFloat(clientGrandTotal) || 0;
+        const paidAmount = parseFloat(clientPaidAmount) || 0;
+
+        if (grandTotal < 0) throw new Error('Grand total cannot be negative');
+        if (paidAmount < 0) throw new Error('Paid amount cannot be negative');
+        if (paidAmount > grandTotal) throw new Error('Paid amount cannot exceed grand total');
+        
+        const netUnpaid = Math.max(0, grandTotal - paidAmount);
+
+        // Parse Dates
+        let parsedDate = date;
+        if (parsedDate && parsedDate.includes('/')) {
+            const parts = parsedDate.split('/');
+            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDate) {
+            parsedDate = new Date().toISOString().split('T')[0];
+        }
+
+        let parsedDueDate = dueDate;
+        if (parsedDueDate && parsedDueDate.includes('/')) {
+            const parts = parsedDueDate.split('/');
+            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (!parsedDueDate) {
+            parsedDueDate = null;
+        }
+
+        // 3. Delta Calculation (Items using primary key ID)
+        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : oldInv.items;
+        
+        const itemDeltas = new Map(); 
+
+        for (const oldIt of oldItems) {
+            const itemId = String(oldIt.id || oldIt.item_id);
+            const qty = parseFloat(oldIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            }
+        }
+
+        for (const newIt of items) {
+            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const qty = parseFloat(newIt.qty) || 0;
+            if(itemId !== "undefined") {
+                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            }
+        }
+
+        // Clean up 0 deltas
+        for (const [itemId, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        }
+
+        // 4. Stock Validation
+        const itemIds = Array.from(itemDeltas.keys()).sort();
+        if (itemIds.length > 0) {
+            const dbItemsRes = await client.query(
+                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
+                [itemIds]
+            );
+
+            const dbItemsMap = new Map();
+            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemId);
+                if (!dbItem) {
+                    throw new Error(`Item ID "${itemId}" not found in inventory`);
+                }
+                const currentStock = parseFloat(dbItem.stock) || 0;
+                // For purchases, deltaQty < 0 means we took TOO MUCH away.
+                if (currentStock + deltaQty < 0) {
+                    throw new Error(`Insufficient stock for item "${dbItem.name}". Available: ${currentStock}, Edit requires deducting additional: ${Math.abs(deltaQty)}`);
+                }
+            }
+
+            // Apply Stock Deltas
+            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+                await client.query(
+                    `UPDATE items SET stock = stock + $1 WHERE id = $2`,
+                    [deltaQty, itemId]
+                );
+            }
+        }
+
+        // 5. Applying New Financial Effects
+        const oldNetUnpaid = parseFloat(oldInv.pending_to_pay) || 0;
+        const actualVendorId = oldInv.vendor_id;
+        
+        if (actualVendorId) {
+            await client.query(`SELECT id FROM vendors WHERE id = $1 FOR UPDATE`, [actualVendorId]);
+            const netUnpaidDelta = netUnpaid - oldNetUnpaid;
+            if (Math.abs(netUnpaidDelta) > 0.0001) {
+                await client.query(
+                    `UPDATE vendors SET pending_to_pay = COALESCE(pending_to_pay, 0) + $1 WHERE id = $2`,
+                    [netUnpaidDelta, actualVendorId]
+                );
+            }
+        }
+
+        // 6. Update the Document
+        const updateQuery = `
+            UPDATE purchase_invoices SET
+                date = $1, ref_no = $2, due_date = $3, payment_terms = $4,
+                sub_total = $5, discount_amount = $6, total_tax = $7, amount = $8,
+                paid_amount = $9, pending_to_pay = $10, items = $11,
+                updated_at = NOW()
+            WHERE id = $12 RETURNING *
+        `;
+        const updateVals = [
+            parsedDate, refNo || '', parsedDueDate, paymentTerms || '',
+            parsedSubTotal, parsedDiscount, parsedTaxAmount, grandTotal,
+            paidAmount, netUnpaid, JSON.stringify(items),
+            invoiceId
+        ];
+        const updateRes = await client.query(updateQuery, updateVals);
+        const newInv = updateRes.rows[0];
+
+        // 7. Audit Logging
+        await insertAuditLog(client, {
+            tableName: 'purchase_invoices',
+            recordId: invoiceId,
+            action: 'UPDATE',
+            oldData: oldInv,
+            newData: newInv,
+            req,
+            transactionId
+        });
+
+        await client.query('COMMIT');
+        res.json({ success: true, data: newInv });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        if (e.code === '40P01') {
+            return res.status(400).json({ error: 'Transaction deadlock detected. Please try saving again.' });
+        } else if (e.code === '55P03') {
+            return res.status(400).json({ error: 'System is busy updating inventory for these items. Please try again.' });
+        }
+        res.status(400).json({ error: e.message || 'Failed to update transaction' });
+    } finally {
+        client.release();
+    }
+});
+
+
 // PATCH /api/purchases/:id
-app.patch('/api/purchases/:id', async (req, res) => {\n    const transactionId = crypto.randomUUID();
+app.patch('/api/purchases/:id', async (req, res) => {
+    const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const allowedFields = ['refNo', 'dueDate', 'paymentTerms', 'note'];
 
@@ -3879,10 +4633,15 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Start HTTP server on port 3000
-app.listen(HTTP_PORT, '0.0.0.0', () => {
-    console.log(`==================================================`);
-    console.log(`  SPH Billing Server running at:`);
-    console.log(`  Local:   http://localhost:${HTTP_PORT}`);
-    console.log(`==================================================`);
-});
+// Start HTTP server on port 3000 (Local Dev)
+if (require.main === module) {
+    app.listen(HTTP_PORT, '0.0.0.0', () => {
+        console.log(`==================================================`);
+        console.log(`  SPH Billing Server running at:`);
+        console.log(`  Local:   http://localhost:${HTTP_PORT}`);
+        console.log(`==================================================`);
+    });
+}
+
+// Export for Vercel Serverless Functions
+module.exports = app;

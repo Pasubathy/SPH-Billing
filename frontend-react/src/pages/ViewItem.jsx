@@ -24,6 +24,20 @@ export default function ViewItem() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printCopies, setPrintCopies] = useState(1);
   const [toast, setToast] = useState(null);
+  const [printSettings, setPrintSettings] = useState(null);
+  const [startPosition, setStartPosition] = useState(1);
+
+  const openPrintModal = () => {
+    let tsData = {};
+    try {
+      const saved = localStorage.getItem('tagSettings');
+      if (saved) tsData = JSON.parse(saved);
+    } catch (e) { }
+    setPrintSettings(tsData);
+    setStartPosition(1);
+    setPrintCopies(1);
+    setShowPrintModal(true);
+  };
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -35,9 +49,9 @@ export default function ViewItem() {
     const loadData = async () => {
       try {
         const [resItems, resUnits, resCats] = await Promise.all([
-          fetch('http://localhost:3000/api/items').then(r => r.json()),
-          fetch('http://localhost:3000/api/units').then(r => r.json()),
-          fetch('http://localhost:3000/api/categories').then(r => r.json())
+          fetch('/api/items').then(r => r.json()),
+          fetch('/api/units').then(r => r.json()),
+          fetch('/api/categories').then(r => r.json())
         ]);
         setItems(resItems || []);
         setUnits(resUnits || []);
@@ -89,7 +103,7 @@ export default function ViewItem() {
     const remainingItems = items.filter(item => String(item.code) !== String(activeItem.code));
 
     try {
-      const res = await fetch('http://localhost:3000/api/items', {
+      const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(remainingItems)
@@ -116,154 +130,28 @@ export default function ViewItem() {
     }
   };
 
-  const handlePrintTag = () => {
+  const handlePrintTag = async () => {
     if (!activeItem) return;
+    
     let tsData = {};
     try {
-      const saved = localStorage.getItem('tagSettings');
-      if (saved) tsData = JSON.parse(saved);
-    } catch (e) { }
-
-    const width = tsData.tsWidth || 50;
-    const height = tsData.tsHeight || 25;
-    const mt = tsData.tsMarginTop || 0;
-    const mb = tsData.tsMarginBottom || 0;
-    const ml = tsData.tsMarginLeft || 0;
-    const mr = tsData.tsMarginRight || 0;
-
-    const showCode = tsData.tsOptCode !== false;
-    const showName = tsData.tsOptName !== false;
-    const showPrice = tsData.tsOptPrice !== false;
-    const showQR = tsData.tsOptQR !== false;
-
-    const sizeCode = tsData.tsSizeCode || 12;
-    const sizeName = tsData.tsSizeName || 14;
-    const sizePrice = tsData.tsSizePrice || 16;
-    const sizeQR = tsData.tsSizeQR || 35;
-
-    const alignText = (tsData.tsAlign || 'left').toLowerCase();
-    const jContent = alignText === 'center' ? 'center' : (alignText === 'left' ? 'flex-start' : 'flex-end');
-    const qrImgWidthMm = width * (sizeQR / 100);
-
-    const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${activeItem.code}`;
-
-    let tagsHtml = '';
-    for (let i = 0; i < printCopies; i++) {
-      tagsHtml += `
-      <div class="tag">
-          <div class="tag-content">
-              <div class="tag-inner-group" style="justify-content: ${jContent};">
-                  <div class="qr-col" style="display: ${showQR ? 'flex' : 'none'}; width: ${showQR ? qrImgWidthMm + 'mm' : '0mm'}; height: ${showQR ? qrImgWidthMm + 'mm' : '0mm'};">
-                      <img src="${qrDataUrl}" alt="QR">
-                  </div>
-                  <div class="text-col" style="width: auto; align-items: ${alignText === 'center' ? 'center' : (alignText === 'left' ? 'flex-start' : 'flex-end')}; text-align: ${alignText};">
-                      ${showCode ? `<div class="code">${activeItem.code || ''}</div>` : ''}
-                      ${showName ? `<div class="name">${activeItem.name || 'Unknown Item'}</div>` : ''}
-                      ${showPrice ? `<div class="price">₹${parseFloat(activeItem.sellingPrice).toFixed(2)}/${getShortUnitName(activeItem.unit)}</div>` : ''}
-                  </div>
-              </div>
-          </div>
-      </div>`;
+        const saved = localStorage.getItem('tagSettings');
+        if (saved) tsData = JSON.parse(saved);
+    } catch (err) {
+        console.error('Failed to parse tag settings', err);
+        tsData = {};
     }
-
-    const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Print Item Tag</title>
-<style>
-@media print { 
-    @page { 
-        margin: 0; 
-        size: ${width}mm ${height}mm;
-    } 
-    body { margin: 0; padding: 0; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .tag { margin: 0 !important; page-break-after: always; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-}
-body { 
-    font-family: 'Manrope', sans-serif;
-    margin: 0;
-    padding: 0;
-    background: #fff;
-}
-.tag { 
-    width: ${width}mm; 
-    height: ${height}mm; 
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background: white;
-    margin: 0 auto;
-    overflow: hidden;
-}
-.tag-content {
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    padding-top: ${mt}mm;
-    padding-bottom: ${mb}mm;
-    padding-left: ${ml}mm;
-    padding-right: ${mr}mm;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: ${jContent};
-}
-.tag-inner-group {
-    display: flex;
-    gap: 10px;
-    max-width: 100%;
-    align-items: center;
-}
-.qr-col { 
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
-    flex-shrink: 0;
-}
-.qr-col img { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: contain; 
-}
-.text-col { 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: center; 
-    gap: 2px; 
-    flex: 0 1 auto;
-    min-width: 0;
-}
-.name, .code, .price { 
-    line-height: 1.2; 
-    white-space: nowrap; 
-    overflow: hidden; 
-    text-overflow: ellipsis; 
-    color: #000; 
-    font-weight: 600; 
-}
-.name { font-size: ${sizeName}px; }
-.code { font-size: ${sizeCode}px; }
-.price { font-size: ${sizePrice}px; }
-</style>
-</head>
-<body>
-    ${tagsHtml}
-    <script>
-        window.onload = function() { 
-            setTimeout(function() { 
-                window.print(); 
-                setTimeout(function() { window.close(); }, 500);
-            }, 500); 
-        }
-    </script>
-</body>
-</html>`;
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    
+    // Save data to localStorage so the new tab can read it
+    localStorage.setItem('printItemData', JSON.stringify({
+        item: activeItem,
+        settings: tsData,
+        copies: printCopies,
+        start: startPosition
+    }));
+    
+    // Open the new React-based print route
+    window.open('/print/tags', '_blank');
     setShowPrintModal(false);
   };
 
@@ -307,7 +195,7 @@ body {
             </div>
           ))}
           {filteredItems.length === 0 && (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No items found</div>
+            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No items found</div>
           )}
         </div>
       </div>
@@ -316,7 +204,7 @@ body {
       {activeItem ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F8FAFC', overflowY: 'auto' }}>
           {/* Main Top Bar Actions */}
-          <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+          <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Link to="/items" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-muted)' }}>
                 <ChevronLeft size={16} />
@@ -334,7 +222,7 @@ body {
           </div>
 
           {/* Details Content Container */}
-          <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px' }}>
+          <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px' }}>
 
             {/* Left Info Column */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -454,7 +342,7 @@ body {
                   <button onClick={() => setShowTagPreview(true)} style={{ height: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '4px', border: '1px solid #000B58', borderRadius: '8px', background: '#F8FAFC', color: '#000B58', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }}>
                     <Eye size={16} /> Preview
                   </button>
-                  <button onClick={() => setShowPrintModal(true)} style={{ height: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '4px', border: '1px solid #000B58', borderRadius: '8px', background: '#F8FAFC', color: '#000B58', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }}>
+                  <button onClick={openPrintModal} style={{ height: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '4px', border: '1px solid #000B58', borderRadius: '8px', background: '#F8FAFC', color: '#000B58', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }}>
                     <Printer size={16} /> Print
                   </button>
                 </div>
@@ -473,7 +361,7 @@ body {
       </div>
 
       {/* Sticky Bottom Bar - Full Width */}
-      <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
+      <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
         <div className="footer-left">
           <button onClick={() => navigate('/items')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
             <ChevronLeft size={16} /> Back
@@ -484,7 +372,7 @@ body {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 20000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '320px', textAlign: 'center' }}>
+          <div style={{ background: 'white', padding: '16px', borderRadius: '12px', width: '320px', textAlign: 'center' }}>
             <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '17px' }}>Delete Item</h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '13px' }}>Are you sure you want to delete this item? This action cannot be undone.</p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -503,7 +391,7 @@ body {
               <h3 style={{ margin: 0, fontSize: '15px' }}>Tag Preview</h3>
               <button type="button" onClick={() => setShowTagPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-            <div style={{ padding: '32px 24px', background: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ padding: '32px 16px', background: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{ background: 'white', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', boxSizing: 'border-box' }}>
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${activeItem.code}`} style={{ width: '50px', height: '50px', objectFit: 'contain' }} alt="QR" />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
@@ -520,14 +408,91 @@ body {
       {/* Print Copies Modal */}
       {showPrintModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 20000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '260px', padding: '16px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#000B58' }}>Print Tag</h3>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px' }}>Number of copies</label>
-            <input type="number" value={printCopies} onChange={e => setPrintCopies(Math.max(1, parseInt(e.target.value) || 1))} min="1" style={{ width: '100%', height: '32px', padding: '0 8px', border: '1px solid #E2E8F0', borderRadius: '6px', boxSizing: 'border-box', marginBottom: '16px', fontSize: '13px' }} />
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowPrintModal(false)} style={{ padding: '6px 12px', border: '1px solid #000B58', borderRadius: '6px', background: 'white', color: '#000B58', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>Cancel</button>
-              <button onClick={handlePrintTag} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', background: '#000B58', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>Print</button>
-            </div>
+          <div style={{ background: 'white', borderRadius: '12px', width: printSettings?.tsPrintType === 'a4' ? '800px' : '260px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#000B58' }}>Print Tag</h3>
+            
+            {printSettings?.tsPrintType === 'a4' ? (
+              <div style={{ display: 'flex', gap: '32px' }}>
+                {/* Left side: Grid */}
+                <div style={{ flex: 3, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: '600' }}>Start Position</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{startPosition} of {printSettings.tsA4Rows * printSettings.tsA4Cols}</span>
+                  </div>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: `repeat(${printSettings.tsA4Cols}, 1fr)`, 
+                    gap: '6px', 
+                    background: '#F1F5F9', 
+                    padding: '12px', 
+                    borderRadius: '8px',
+                    height: '400px',
+                    overflowY: 'auto'
+                  }}>
+                    {Array.from({ length: printSettings.tsA4Rows * printSettings.tsA4Cols }).map((_, i) => {
+                      const pos = i + 1;
+                      const isSelected = pos === startPosition;
+                      const isUsed = pos < startPosition;
+                      return (
+                        <div 
+                          key={i} 
+                          onClick={() => setStartPosition(pos)}
+                          style={{
+                            aspectRatio: '2/1',
+                            background: isSelected ? '#000B58' : isUsed ? '#CBD5E1' : 'white',
+                            border: `1px solid ${isSelected ? '#000B58' : '#E2E8F0'}`,
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '10px',
+                            color: isSelected ? 'white' : isUsed ? '#64748B' : '#000',
+                            transition: 'all 0.2s'
+                          }}
+                          title={`Position ${pos}`}
+                        >
+                          {pos}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Right side: settings */}
+                <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px' }}>Number of copies</label>
+                  <input type="number" value={printCopies} onChange={e => setPrintCopies(Math.max(1, parseInt(e.target.value) || 1))} min="1" style={{ width: '100%', height: '36px', padding: '0 12px', border: '1px solid #E2E8F0', borderRadius: '6px', boxSizing: 'border-box', marginBottom: '16px', fontSize: '13px', outline: 'none' }} />
+                  
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Total Labels:</span>
+                      <span style={{ fontWeight: '600', color: '#000' }}>{printCopies}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Sheets Required:</span>
+                      <span style={{ fontWeight: '600', color: '#000' }}>{Math.ceil(((startPosition - 1) + printCopies) / (printSettings.tsA4Rows * printSettings.tsA4Cols))}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 'auto', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setShowPrintModal(false)} style={{ flex: 1, padding: '10px 0', border: '1px solid #E2E8F0', borderRadius: '6px', background: 'white', color: 'var(--text-main)', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Cancel</button>
+                    <button onClick={handlePrintTag} style={{ flex: 1, padding: '10px 0', border: 'none', borderRadius: '6px', background: '#000B58', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Print</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Thermal modal
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px' }}>Number of copies</label>
+                <input type="number" value={printCopies} onChange={e => setPrintCopies(Math.max(1, parseInt(e.target.value) || 1))} min="1" style={{ width: '100%', height: '36px', padding: '0 12px', border: '1px solid #E2E8F0', borderRadius: '6px', boxSizing: 'border-box', marginBottom: '16px', fontSize: '13px', outline: 'none' }} />
+                
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowPrintModal(false)} style={{ flex: 1, padding: '8px 0', border: '1px solid #E2E8F0', borderRadius: '6px', background: 'white', color: 'var(--text-main)', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Cancel</button>
+                  <button onClick={handlePrintTag} style={{ flex: 1, padding: '8px 0', border: 'none', borderRadius: '6px', background: '#000B58', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Print</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

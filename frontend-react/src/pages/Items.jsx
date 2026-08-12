@@ -20,9 +20,9 @@ const Items = () => {
                 // Fetch from the backend API. Hardcoded localhost for dev purposes, 
                 // in production you would use a relative path like '/api/categories'
                 const [resCats, resUnits, resItems] = await Promise.all([
-                    fetch('http://localhost:3000/api/categories').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/units').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/items').catch(() => ({ json: () => [] }))
+                    fetch('/api/categories').catch(() => ({ json: () => [] })),
+                    fetch('/api/units').catch(() => ({ json: () => [] })),
+                    fetch('/api/items').catch(() => ({ json: () => [] }))
                 ]);
                 
                 const cats = await resCats.json();
@@ -31,7 +31,7 @@ const Items = () => {
                 
                 setCategories(cats || []);
                 setUnits(un || []);
-                setItems(itms || []);
+                setItems((itms || []).reverse());
             } catch (err) {
                 console.error('Error loading initial data:', err);
             }
@@ -181,61 +181,59 @@ const Items = () => {
 
                 {/* Items Content Area */}
                 {currentView === 'list' ? (
-                    <div className="units-content-wrapper" style={{ display: 'block' }}>
-                        <div className="units-table">
-                            <div className="units-header-row unified-row">
-                                <div className="col-item-sno">S. No.</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-code">Code</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-name">Item Name</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-category">Category</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-stock">Stock</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-unit">Base Unit</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-pprice">Purchase Price</div>
-                                <div className="vertical-divider"></div>
-                                <div className="col-item-sprice">Selling Price</div>
-                            </div>
-                            
-                            <div className="units-body">
-                                {filteredItems.map((item, index) => {
-                                    const pPrice = parseFloat(item.purchasePrice !== undefined ? item.purchasePrice : item.purchaseAmount) || 0;
-                                    const sPrice = parseFloat(item.sellingPrice !== undefined ? item.sellingPrice : item.sellingAmount) || 0;
-                                    const shortUnit = getShortUnitName(item.unit);
-                                    
-                                    return (
-                                        <div className="unit-row unified-row" key={item.code} style={index === filteredItems.length - 1 ? { borderBottom: 'none' } : {}}>
-                                            <div className="col-item-sno">{index + 1}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-code">{item.code}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-name">
-                                                <div className="item-thumbnail">
-                                                    {item.images && item.images.length > 0 ? 
-                                                        <img src={item.images[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 
-                                                        <Package size={16} />
-                                                    }
-                                                </div>
-                                                <Link to={`/items/view/${item.code}`} className="item-link" style={{ textDecoration: 'none', color: '#000B58', fontWeight: '600' }}>{item.name}</Link>
-                                            </div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-category">{item.category}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-stock">{item.stock || 0}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-unit">{shortUnit}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-pprice">₹{pPrice.toFixed(2)}</div>
-                                            <div className="vertical-divider"></div>
-                                            <div className="col-item-sprice">₹{sPrice.toFixed(2)}</div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
+                    <div className="units-content-wrapper" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ height: '40px' }}>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '70px' }}>S. No.</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '120px' }}>Code</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '250px' }}>Item Name</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Category</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '100px' }}>Stock</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '100px' }}>Base Unit</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Purchase Price</th>
+                                        <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '150px' }}>Selling Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredItems.length > 0 ? filteredItems.map((item, index) => {
+                                        const pPrice = parseFloat(item.purchasePrice !== undefined ? item.purchasePrice : item.purchaseAmount) || 0;
+                                        const sPrice = parseFloat(item.sellingPrice !== undefined ? item.sellingPrice : item.sellingAmount) || 0;
+                                        const shortUnit = getShortUnitName(item.unit);
+                                        const isLast = index === filteredItems.length - 1;
+                                        
+                                        return (
+                                            <tr key={item.code} style={{ borderBottom: isLast ? 'none' : '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{index + 1}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.code}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <div style={{ width: '28px', height: '28px', borderRadius: '4px', overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            {item.images && item.images.length > 0 ? 
+                                                                <img src={item.images[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 
+                                                                <Package size={16} color="#64748b" />
+                                                            }
+                                                        </div>
+                                                        <Link to={`/items/view/${item.code}`} style={{ textDecoration: 'none', color: '#000B58', fontWeight: '600' }}>{item.name}</Link>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.category}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.stock || 0}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{shortUnit}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>₹{pPrice.toFixed(2)}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: 'none', textAlign: 'left' }}>₹{sPrice.toFixed(2)}</td>
+                                            </tr>
+                                        )
+                                    }) : (
+                                        <tr>
+                                            <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                                                No items found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 ) : (
@@ -294,7 +292,7 @@ const Items = () => {
             {/* QR Scanner Modal */}
             {isScannerOpen && (
                 <div style={{ display: 'flex', position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', zIndex: 1000, justifyContent: 'center', alignItems: 'center' }}>
-                    <div style={{ background: 'white', padding: '24px', borderRadius: '16px', width: '450px', maxWidth: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', position: 'relative' }}>
+                    <div style={{ background: 'white', padding: '16px', borderRadius: '16px', width: '450px', maxWidth: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', position: 'relative' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h3 style={{ fontSize: '18px', fontWeight: '600', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                                 <Scan size={20} /> Scan Item Tag

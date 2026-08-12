@@ -37,10 +37,10 @@ const Sales = () => {
         const loadData = async () => {
             try {
                 const [cRes, siRes, arRes, srRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/customers').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/sales').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/payments').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/sales-returns').catch(() => ({ json: () => [] }))
+                    fetch('/api/customers').catch(() => ({ json: () => [] })),
+                    fetch('/api/sales').catch(() => ({ json: () => [] })),
+                    fetch('/api/payments').catch(() => ({ json: () => [] })),
+                    fetch('/api/sales-returns').catch(() => ({ json: () => [] }))
                 ]);
                 const cData = await cRes.json();
                 const siData = await siRes.json();
@@ -537,10 +537,10 @@ const Sales = () => {
                         }}
                         onDeleteCustomer={async (cust) => {
                             try {
-                                const res = await fetch('http://localhost:3000/api/customers');
+                                const res = await fetch('/api/customers');
                                 let dbCusts = await res.json();
                                 dbCusts = dbCusts.filter(c => String(c.id) !== String(cust.id));
-                                await fetch('http://localhost:3000/api/customers', {
+                                await fetch('/api/customers', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify(dbCusts)

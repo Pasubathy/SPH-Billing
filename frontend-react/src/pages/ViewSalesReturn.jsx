@@ -30,7 +30,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
 
     useEffect(() => {
         if (!customers || customers.length === 0) {
-            fetch('http://localhost:3000/api/customers')
+            fetch('/api/customers')
                 .then(r => r.json())
                 .then(data => setAllCustomers(data))
                 .catch(() => {});
@@ -78,7 +78,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
         setIsCancelling(true);
         try {
             const token = localStorage.getItem('authToken');
-            const res = await fetch(`http://localhost:3000/api/sales-returns/${currentSale.id}/cancel`, {
+            const res = await fetch(`/api/sales-returns/${currentSale.id}/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ reason: cancelReason.trim() })
@@ -93,7 +93,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
             setCancelReason('');
 
             // Refresh from backend
-            const refreshRes = await fetch('http://localhost:3000/api/sales-returns', {
+            const refreshRes = await fetch('/api/sales-returns', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (refreshRes.ok) {
@@ -540,7 +540,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
                     {/* List Items */}
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                         {filteredSales.length === 0 ? (
-                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No returns found</div>
+                            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No returns found</div>
                         ) : (
                             filteredSales.map(s => {
                                 const total = parseFloat(s.totalAmount || s.grandTotal) || 0;
@@ -586,7 +586,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
                 {/* Right Preview */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F8FAFC', overflowY: 'auto' }}>
                     {/* Header Actions */}
-                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid #FCA5A5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid #FCA5A5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-muted)', background: 'white', cursor: 'pointer' }}>
                                 <ChevronLeft size={16} />
@@ -617,7 +617,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
                     )}
 
                     {/* Preview Area */}
-                    <div style={{ padding: '24px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+                    <div style={{ padding: '16px', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
                         <div 
                             dangerouslySetInnerHTML={{ __html: generateHTML(currentSale) }} 
                             style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
@@ -627,7 +627,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
             </div>
 
             {/* Footer */}
-            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
+            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
                 <div className="footer-left">
                     <button onClick={onBack} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
                         <ChevronLeft size={16} /> Back

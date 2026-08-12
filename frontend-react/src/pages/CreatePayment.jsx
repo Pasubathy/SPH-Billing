@@ -39,9 +39,9 @@ export default function CreatePayment() {
     const fetchData = async () => {
       try {
         const [vRes, piRes, cRes] = await Promise.all([
-          fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-          fetch('http://localhost:3000/api/purchase-invoices').catch(() => ({ json: () => [] })),
-          fetch('http://localhost:3000/api/vendor-payment-counter').catch(() => ({ json: () => ({ counter: 1 }) }))
+          fetch('/api/vendors').catch(() => ({ json: () => [] })),
+          fetch('/api/purchase-invoices').catch(() => ({ json: () => [] })),
+          fetch('/api/vendor-payment-counter').catch(() => ({ json: () => ({ counter: 1 }) }))
         ]);
         
         const vData = await vRes.json();
@@ -166,7 +166,7 @@ export default function CreatePayment() {
         };
 
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:3000/api/vendor-payments/create', {
+        const res = await fetch('/api/vendor-payments/create', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -213,7 +213,7 @@ export default function CreatePayment() {
           }
         `}
       </style>
-      <div className="page-header" style={{ height: '45px', padding: '0 24px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+      <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
         <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Create Vendor Payment</h1>
       </div>
 
@@ -440,7 +440,7 @@ export default function CreatePayment() {
         </div>
       </div>
 
-      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', boxSizing: 'border-box' }}>
+      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', boxSizing: 'border-box' }}>
         <button onClick={() => navigate('/payment')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>

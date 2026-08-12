@@ -61,7 +61,7 @@ export default function CreateVendor() {
 
     try {
       // 1. Fetch existing vendors
-      const res = await fetch('http://localhost:3000/api/vendors');
+      const res = await fetch('/api/vendors');
       const vendors = await res.json();
 
       let pendingToPay = 0;
@@ -117,7 +117,7 @@ export default function CreateVendor() {
       }
 
       // 4. POST the entire array back to the bulk-replace endpoint
-      const saveRes = await fetch('http://localhost:3000/api/vendors', {
+      const saveRes = await fetch('/api/vendors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vendors)
@@ -191,7 +191,7 @@ export default function CreateVendor() {
           }
         `}
       </style>
-      <div className="page-header" style={{ height: '45px', padding: '0 24px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+      <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
         <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-main)' }}>Create Vendor</h1>
       </div>
 
@@ -383,7 +383,7 @@ export default function CreateVendor() {
         </div>
       </div>
 
-      <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+      <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
         <button onClick={() => navigate('/vendors')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>

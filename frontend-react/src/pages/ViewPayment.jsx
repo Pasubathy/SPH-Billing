@@ -35,8 +35,8 @@ const ViewPayment = () => {
         const fetchPayment = async () => {
             try {
                 const [vRes, pmtRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/vendor-payments').catch(() => ({ json: () => [] }))
+                    fetch('/api/vendors').catch(() => ({ json: () => [] })),
+                    fetch('/api/vendor-payments').catch(() => ({ json: () => [] }))
                 ]);
                 const vData = await vRes.json();
                 const pmtData = await pmtRes.json();
@@ -79,7 +79,7 @@ const ViewPayment = () => {
         setIsCancelling(true);
         try {
             const token = localStorage.getItem('authToken');
-            const res = await fetch(`http://localhost:3000/api/vendor-payments/${currentPayment.id}/cancel`, {
+            const res = await fetch(`/api/vendor-payments/${currentPayment.id}/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ reason: cancelReason.trim() })
@@ -94,7 +94,7 @@ const ViewPayment = () => {
             setCancelReason('');
 
             // Refresh from backend
-            const refreshRes = await fetch('http://localhost:3000/api/vendor-payments', {
+            const refreshRes = await fetch('/api/vendor-payments', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (refreshRes.ok) {
@@ -320,8 +320,8 @@ const ViewPayment = () => {
         `;
     };
 
-    if (loading) return <div style={{ padding: '24px' }}>Loading...</div>;
-    if (!currentPayment) return <div style={{ padding: '24px' }}>Payment not found.</div>;
+    if (loading) return <div style={{ padding: '16px' }}>Loading...</div>;
+    if (!currentPayment) return <div style={{ padding: '16px' }}>Payment not found.</div>;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white' }}>
@@ -349,7 +349,7 @@ const ViewPayment = () => {
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                         {filteredPayments.length === 0 ? (
-                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No records found</div>
+                            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No records found</div>
                         ) : (
                             filteredPayments.map((p, idx) => {
                                 const isActive = currentPayment && currentPayment.id === p.id;
@@ -388,7 +388,7 @@ const ViewPayment = () => {
 
                 {/* Right Preview */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F8FAFC', overflowY: 'auto' }}>
-                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}>
+                    <div style={{ height: '50px', background: 'white', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <button onClick={() => navigate('/payment')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-muted)', background: 'white', cursor: 'pointer' }}>
                                 <ChevronLeft size={16} />
@@ -420,13 +420,13 @@ const ViewPayment = () => {
                         </div>
                     )}
 
-                    <div style={{ padding: '24px', flex: 1, overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+                    <div style={{ padding: '16px', flex: 1, overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
                         <div dangerouslySetInnerHTML={{ __html: generateHTML(currentPayment) }} style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'center' }} />
                     </div>
                 </div>
             </div>
 
-            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
+            <div className="sticky-action-bar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderTop: '1px solid var(--border-color)', zIndex: 10, flexShrink: 0 }}>
                 <div className="footer-left">
                     <button onClick={() => navigate('/payment')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
                         <ChevronLeft size={16} /> Back

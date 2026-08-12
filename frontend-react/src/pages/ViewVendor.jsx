@@ -28,10 +28,10 @@ const ViewVendor = () => {
         const loadData = async () => {
             try {
                 const [vRes, piRes, pmtRes, prRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-invoices').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/vendor-payments').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/purchase-returns').catch(() => ({ json: () => [] })),
+                    fetch('/api/vendors').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-invoices').catch(() => ({ json: () => [] })),
+                    fetch('/api/vendor-payments').catch(() => ({ json: () => [] })),
+                    fetch('/api/purchase-returns').catch(() => ({ json: () => [] })),
                 ]);
                 setAllVendors(await vRes.json() || []);
                 setPurchaseInvoices(await piRes.json() || []);
@@ -265,10 +265,10 @@ const ViewVendor = () => {
 
     const handleDelete = async () => {
         try {
-            const res = await fetch('http://localhost:3000/api/vendors');
+            const res = await fetch('/api/vendors');
             let dbVendors = await res.json();
             dbVendors = dbVendors.filter(v => String(v.id) !== String(vendor.id));
-            await fetch('http://localhost:3000/api/vendors', {
+            await fetch('/api/vendors', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dbVendors),
@@ -280,8 +280,8 @@ const ViewVendor = () => {
         }
     };
 
-    if (loading) return <div style={{ padding: '24px', fontFamily: 'Manrope, sans-serif' }}>Loading...</div>;
-    if (!vendor) return <div style={{ padding: '24px', fontFamily: 'Manrope, sans-serif' }}>Vendor not found.</div>;
+    if (loading) return <div style={{ padding: '16px', fontFamily: 'Manrope, sans-serif' }}>Loading...</div>;
+    if (!vendor) return <div style={{ padding: '16px', fontFamily: 'Manrope, sans-serif' }}>Vendor not found.</div>;
 
     const tabs = [
         { id: 'details', label: 'Vendor Details' },
@@ -336,7 +336,7 @@ const ViewVendor = () => {
                 {/* Vendor list */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     {filteredVendors.length === 0 ? (
-                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No vendors found</div>
+                        <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No vendors found</div>
                     ) : (
                         filteredVendors.map(v => {
                             const isSelected = String(v.id) === String(vendor.id);
@@ -374,7 +374,7 @@ const ViewVendor = () => {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F8FAFC' }}>
 
                 {/* Header */}
-                <div style={{ height: '60px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0, background: 'white' }}>
+                <div style={{ height: '60px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0, background: 'white' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button onClick={() => navigate('/vendors')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#000B58' }}>
                             <ChevronLeft size={24} />
@@ -392,7 +392,7 @@ const ViewVendor = () => {
                 </div>
 
                 {/* Tabs */}
-                <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid #E2E8F0', background: 'white', padding: '0 24px', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid #E2E8F0', background: 'white', padding: '0 16px', flexShrink: 0 }}>
                     {tabs.map(t => (
                         <button
                             key={t.id}
@@ -405,7 +405,7 @@ const ViewVendor = () => {
                 </div>
 
                 {/* Tab Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
 
                     {/* ── TAB 1: Vendor Details ── */}
                     {activeTab === 'details' && (
@@ -519,7 +519,7 @@ const ViewVendor = () => {
                                         })
                                     ) : (
                                         <tr>
-                                            <td colSpan="7" style={{ padding: '24px', textAlign: 'center', color: '#64748B' }}>No transactions recorded for this vendor</td>
+                                            <td colSpan="7" style={{ padding: '16px', textAlign: 'center', color: '#64748B' }}>No transactions recorded for this vendor</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -589,7 +589,7 @@ const ViewVendor = () => {
                                                 <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: tx.runningBalance > 0 ? '#B91C1C' : '#15803D' }}>₹{tx.runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                                             </tr>
                                         )) : (
-                                            <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: '#94A3B8' }}>No transactions in this period</td></tr>
+                                            <tr><td colSpan="6" style={{ padding: '16px', textAlign: 'center', color: '#94A3B8' }}>No transactions in this period</td></tr>
                                         )}
                                         {/* Totals */}
                                         <tr style={{ background: '#F1F5F9', borderTop: '2px solid #E2E8F0', fontWeight: '700' }}>
@@ -611,7 +611,7 @@ const ViewVendor = () => {
             {/* Delete Confirmation Modal */}
             {showDeleteModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                    <div style={{ background: 'white', borderRadius: '12px', width: '400px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', fontFamily: 'Manrope, sans-serif' }}>
+                    <div style={{ background: 'white', borderRadius: '12px', width: '400px', padding: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', fontFamily: 'Manrope, sans-serif' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                             <div style={{ background: '#FEE2E2', padding: '10px', borderRadius: '50%' }}>
                                 <Trash2 style={{ width: '22px', height: '22px', color: '#EF4444' }} />

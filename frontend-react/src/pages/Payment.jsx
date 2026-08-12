@@ -14,8 +14,8 @@ const Payment = () => {
         const loadData = async () => {
             try {
                 const [pRes, vRes] = await Promise.all([
-                    fetch('http://localhost:3000/api/vendor-payments').catch(() => ({ json: () => [] })),
-                    fetch('http://localhost:3000/api/vendors').catch(() => ({ json: () => [] }))
+                    fetch('/api/vendor-payments').catch(() => ({ json: () => [] })),
+                    fetch('/api/vendors').catch(() => ({ json: () => [] }))
                 ]);
                 const pData = await pRes.json();
                 const vData = await vRes.json();
@@ -78,7 +78,7 @@ const Payment = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', backgroundColor: '#F8FAFC' }}>
             {/* Tabs */}
-            <div className="page-tabs" style={{ padding: '0 24px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
+            <div className="page-tabs" style={{ padding: '0 16px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'white' }}>
                 <NavLink to="/vendors" className="tab">Vendor</NavLink>
                 <NavLink to="/purchase-invoice" className="tab">Purchase Invoice</NavLink>
                 <NavLink to="/purchase-return" className="tab">Purchase Return</NavLink>
