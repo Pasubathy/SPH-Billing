@@ -469,6 +469,16 @@ async function initDB() {
 }
 initDB();
 
+// Serverless explicitly awaitable init route
+app.get('/api/init-db', async (req, res) => {
+    try {
+        await initDB();
+        res.send('Database tables initialized successfully! You can now close this tab and log in.');
+    } catch (e) {
+        res.status(500).send('Database initialization failed: ' + e.message);
+    }
+});
+
 // Helper to read DB
 async function readDB() {
     try {
