@@ -19,8 +19,16 @@
       "dest": "/backend/server.js"
     },
     {
-      "src": "/(.*)",
+      "src": "^/(assets|Images|Icons)/(.*)",
+      "dest": "/frontend-react/$1/$2"
+    },
+    {
+      "src": "^/(.*\\.(svg|png|ico|txt))$",
       "dest": "/frontend-react/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend-react/index.html"
     }
   ]
 }
