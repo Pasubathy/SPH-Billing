@@ -19,11 +19,27 @@
       "dest": "/backend/server.js"
     },
     {
+      "src": "/sw.js",
+      "dest": "/frontend-react/sw.js",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Service-Worker-Allowed": "/"
+      }
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/frontend-react/manifest.json",
+      "headers": {
+        "Content-Type": "application/manifest+json",
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
       "src": "^/(assets|Images|Icons)/(.*)",
       "dest": "/frontend-react/$1/$2"
     },
     {
-      "src": "^/(.*\\.(svg|png|ico|txt))$",
+      "src": "^/(.*\\.(svg|png|ico|txt|json|js|webmanifest|jpg|jpeg|webp|woff|woff2|ttf|eot))$",
       "dest": "/frontend-react/$1"
     },
     {
