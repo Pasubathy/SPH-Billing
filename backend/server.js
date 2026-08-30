@@ -62,6 +62,7 @@ app.use((req, res, next) => {
     if (origin) {
         const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim());
         const isAllowed = allowedOrigins.includes(origin) || 
+                          origin.endsWith('.vercel.app') ||
                           (process.env.NODE_ENV === 'development' && 
                            (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin) ||
                             /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin) ||
