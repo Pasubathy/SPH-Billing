@@ -4,6 +4,7 @@ import { ArrowLeft, Search, Plus, Trash2, FileText, Calendar, Scan, PlusSquare, 
 import { Html5Qrcode } from 'html5-qrcode';
 import CustomSelect from '../components/CustomSelect';
 import CustomerModal from '../components/CustomerModal';
+import '../assets/css/sales.css';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 
@@ -193,7 +194,7 @@ export default function CreateSalesReturn() {
   useEffect(() => {
     if (location.state?.editMode && location.state?.invoiceData) {
         const data = location.state.invoiceData;
-        setInvoiceNumber(data.invoiceNo || data.invoice_no || data.piNo || data.pi_no);
+        setInvoiceNumber(data.returnNo || data.return_no || data.invoiceNumber || data.invoiceNo || data.invoice_no || data.piNo || data.pi_no);
         setBillingDate(data.date);
         
         if (typeof setActiveCustomer !== 'undefined') {
@@ -755,6 +756,8 @@ export default function CreateSalesReturn() {
                                 ]}
                                 width="80px"
                                 height="38px"
+                                menuDirection="up"
+                                minWidth="80px"
                             />
                             <input 
                                 type="number" 

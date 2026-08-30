@@ -1,11 +1,11 @@
 /* Items Grid View specific styles */
 
-#itemsGridContainer {
+.items-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     grid-auto-rows: max-content;
-    gap: 16px;
+    gap: 14px;
     padding: 0px;
     overflow-y: auto;
     background-color: transparent;
@@ -14,26 +14,35 @@
 }
 
 .item-card {
-    border: 1px solid var(--border-color);
+    border: 1px solid #E2E8F0;
     border-radius: 8px;
-    background-color: white;
+    background-color: #FFFFFF;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    transition: all 0.15s ease-in-out;
+}
+
+.item-card:hover {
+    border-color: #CBD5E1;
+    box-shadow: 0 4px 12px -2px rgba(0, 11, 88, 0.08);
+    transform: translateY(-2px);
 }
 
 .item-card-top {
     display: flex;
-    padding: 16px;
-    gap: 16px;
+    padding: 12px;
+    gap: 10px;
+    align-items: flex-start;
 }
 
 .item-card-image {
-    width: 100px;
-    height: 100px;
-    background-color: #F87171; /* fallback red */
-    border-radius: 8px;
+    width: 64px;
+    height: 64px;
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -51,57 +60,84 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    min-width: 0;
+}
+
+.item-card-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
 }
 
 .item-card-code {
-    font-size: 13px;
-    color: var(--text-muted);
+    font-size: 11.5px;
+    color: #64748B;
+    font-weight: 500;
+}
+
+.item-card-purchase-price {
+    font-size: 11.5px;
+    color: #64748B;
+    font-weight: 500;
 }
 
 .item-card-name {
-    font-size: 15px;
+    font-size: 13.5px;
     font-weight: 600;
     color: var(--text-main);
-    line-height: 1.2;
+    line-height: 1.25;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
+.item-card-name a:hover {
+    color: #000B58;
+}
+
 .item-card-category {
     align-self: flex-start;
-    font-size: 12px;
-    background-color: #EEF2FF;
-    color: var(--primary-color);
-    padding: 2px 10px;
+    font-size: 11px;
+    background-color: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    color: #475569;
+    padding: 1px 8px;
     border-radius: 4px;
-    margin-top: 4px;
+    margin-top: 2px;
     font-weight: 500;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .item-card-purchase {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
-    color: var(--text-main);
-    margin-top: 8px;
+    color: #334155;
+    margin-top: 4px;
 }
 
 .item-card-bottom {
     background-color: #F8FAFC;
-    border-top: 1px solid var(--border-color);
-    padding: 12px 16px;
+    border-top: 1px solid #E2E8F0;
+    padding: 8px 12px;
 }
 
 .item-card-bottom-title {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
+    font-size: 10.5px;
+    color: #64748B;
+    margin-bottom: 2px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 .item-card-prices {
     display: flex;
-    gap: 16px;
+    gap: 12px;
 }
 
 .item-card-price-col {
@@ -109,13 +145,13 @@
 }
 
 .item-card-price-val {
-    font-size: 15px;
+    font-size: 13.5px;
     font-weight: 600;
-    color: var(--text-main);
+    color: #000B58;
 }
 
 .item-card-price-unit {
-    font-size: 13px;
+    font-size: 11.5px;
     font-weight: 400;
-    color: var(--text-muted);
+    color: #64748B;
 }

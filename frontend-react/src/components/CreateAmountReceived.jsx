@@ -1,21 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Loader2, Sparkles } from 'lucide-react';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
+
+const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 
 export default function CreateAmountReceived({ onBack, customers, salesInvoices, editAR }) {
     const [arNo, setArNo] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [customerId, setCustomerId] = useState('');
-    
-    // Reference Type & Payment Mode
-    const [referenceType, setReferenceType] = useState('AGAINST_REFERENCE'); // AGAINST_REFERENCE, ON_ACCOUNT, ADVANCE
-    const [paymentMode, setPaymentMode] = useState('CASH'); // CASH, BANK, UPI, CARD
-    const [referenceNo, setReferenceNo] = useState('');
-    const [referenceDate, setReferenceDate] = useState('');
     const [note, setNote] = useState('');
 
     // Amount details
     const [receivedAmount, setReceivedAmount] = useState('');
+    const [discountAmount, setDiscountAmount] = useState('');
     const [allocations, setAllocations] = useState({}); // { [invoiceId]: amountString }
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState(null);
@@ -40,7 +37,8 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                 const cust = customers.find(c => (c.name || c.customerName) === editAR.customerName);
                 if (cust) setCustomerId(cust.id);
             }
-            setReceivedAmount(editAR.amount || '');
+            setReceivedAmount(editAR.amount ? String(editAR.amount) : '');
+            setDiscountAmount(editAR.discount ? String(editAR.discount) : '');
         } else {
             const fetchCounter = async () => {
                 try {
@@ -65,18 +63,23 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
         const cName = (selectedCustomer.name || selectedCustomer.customerName || '').toLowerCase();
         
         let bills = salesInvoices.filter(si => {
-            if ((si.customerName || '').toLowerCase() !== cName) return false;
+            const siCustId = si.customerId ? String(si.customerId) : '';
+            const siCustName = (si.customerName || '').toLowerCase().trim();
+            const matches = (String(customerId) === 'walk-in' && (!siCustId || siCustId === 'walk-in' || siCustName === 'walk in customer')) ||
+                            (siCustId === String(customerId)) ||
+                            (siCustName === cName);
+            if (!matches) return false;
             const amt = parseFloat(si.grandTotal || si.amount) || 0;
-            const rec = parseFloat(si.receivedAmount || si.paid_amount) || 0;
-            const pend = Math.max(0, amt - rec);
-            return pend > 0;
+            const rec = parseFloat(si.receivedAmount !== undefined ? si.receivedAmount : (si.paidAmount !== undefined ? si.paidAmount : (si.paid_amount || 0)));
+            const pend = si.pendingToReceive !== undefined ? parseFloat(si.pendingToReceive) : (si.pending_to_receive !== undefined ? parseFloat(si.pending_to_receive) : Math.max(0, amt - rec));
+            return pend > 0.001;
         }).map(si => {
             const amt = parseFloat(si.grandTotal || si.amount) || 0;
-            const rec = parseFloat(si.receivedAmount || si.paid_amount) || 0;
-            const pend = Math.max(0, amt - rec);
+            const rec = parseFloat(si.receivedAmount !== undefined ? si.receivedAmount : (si.paidAmount !== undefined ? si.paidAmount : (si.paid_amount || 0)));
+            const pend = si.pendingToReceive !== undefined ? parseFloat(si.pendingToReceive) : (si.pending_to_receive !== undefined ? parseFloat(si.pending_to_receive) : Math.max(0, amt - rec));
             
             return {
-                id: si.id || si.invoiceNumber,
+                id: si.id,
                 invoiceNumber: si.invoiceNumber || si.invoice_no,
                 date: si.date,
                 amount: amt,
@@ -86,54 +89,63 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
         });
 
         // Sort oldest first
-        bills.sort((a, b) => new Date(a.date) - new Date(b.date));
+        bills.sort((a, b) => {
+            const parseDateVal = (s) => {
+                if (!s) return 0;
+                if (typeof s === 'string' && s.includes('/')) {
+                    const parts = s.split('/');
+                    if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+                }
+                return new Date(s).getTime() || 0;
+            };
+            return parseDateVal(a.date) - parseDateVal(b.date);
+        });
         return bills;
     }, [customerId, customers, salesInvoices]);
 
-    const totalPending = pendingBills.reduce((sum, b) => sum + b.pending, 0);
+    const formatBillDate = (dStr) => {
+        if (!dStr) return '-';
+        if (typeof dStr === 'string' && dStr.includes('/')) return dStr;
+        try {
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return String(dStr);
+            return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        } catch {
+            return String(dStr);
+        }
+    };
 
+    const totalPending = pendingBills.reduce((sum, b) => sum + b.pending, 0);
+    const remainingPending = Math.max(0, totalPending - (parseFloat(receivedAmount) || 0) - (parseFloat(discountAmount) || 0));
+
+    // Auto-allocate received amount across pending bills when typed
     const handleReceivedChange = (val) => {
         setReceivedAmount(val);
-        setAllocations({});
-    };
-
-    const handleAllocationChange = (invoiceId, val, maxVal) => {
-        const num = parseFloat(val) || 0;
-        if (num > maxVal) {
-            showToast(`Allocation cannot exceed pending amount of ${maxVal}`, 'warning');
-            setAllocations(prev => ({ ...prev, [invoiceId]: String(maxVal) }));
-            return;
+        const rec = parseFloat(val) || 0;
+        if (rec <= 0 || pendingBills.length === 0) {
+            setAllocations({});
+        } else {
+            let remaining = rec;
+            const newAlloc = {};
+            for (const bill of pendingBills) {
+                if (remaining <= 0) break;
+                const apply = Math.min(remaining, bill.pending);
+                newAlloc[bill.id] = String(apply);
+                remaining -= apply;
+            }
+            setAllocations(newAlloc);
         }
-        setAllocations(prev => ({ ...prev, [invoiceId]: val }));
-    };
-
-    const handleAutoAllocate = () => {
-        const amt = parseFloat(receivedAmount) || 0;
-        if (amt <= 0) {
-            showToast('Please enter received amount first', 'error');
-            return;
-        }
-
-        let remaining = amt;
-        const newAllocations = {};
-        for (const bill of pendingBills) {
-            if (remaining <= 0) break;
-            const apply = Math.min(remaining, bill.pending);
-            newAllocations[bill.id] = String(apply);
-            remaining -= apply;
-        }
-        setAllocations(newAllocations);
-        showToast('Oldest first allocation applied', 'success');
     };
 
     const sumAllocated = Object.entries(allocations).reduce((sum, [_, val]) => sum + (parseFloat(val) || 0), 0);
-    const advanceAmount = Math.max(0, (parseFloat(receivedAmount) || 0) - sumAllocated);
 
-    const handleSave = async () => {
+    const handleSave = async (redirectAfter = true) => {
         if (isSaving) return;
         setIsSaving(true);
         try {
             const recAmt = parseFloat(receivedAmount) || 0;
+            const parsedDisc = parseFloat(discountAmount) || 0;
+
             if (!customerId) {
                 showToast('Please select a customer', 'error');
                 return;
@@ -143,43 +155,60 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                 return;
             }
             if (recAmt <= 0) {
-                showToast('Amount received must be greater than 0', 'error');
+                showToast('Received amount must be greater than 0', 'error');
+                return;
+            }
+            if (parsedDisc < 0) {
+                showToast('Discount cannot be negative', 'error');
                 return;
             }
 
-            let backendAllocations = [];
-            if (referenceType === 'AGAINST_REFERENCE') {
-                backendAllocations = Object.entries(allocations)
-                    .map(([invoiceId, val]) => ({
-                        invoiceId,
-                        allocatedAmount: parseFloat(val) || 0
-                    }))
-                    .filter(a => a.allocatedAmount > 0);
+            const backendAllocations = [];
+            let remDisc = parsedDisc;
 
-                if (backendAllocations.length === 0) {
-                    showToast('Please allocate the payment to at least one invoice', 'error');
-                    return;
+            for (const bill of pendingBills) {
+                const allocVal = parseFloat(allocations[bill.id]) || 0;
+                let discVal = 0;
+                if (remDisc > 0) {
+                    const maxDiscPossible = Math.max(0, bill.pending - allocVal);
+                    discVal = Math.min(remDisc, maxDiscPossible);
+                    remDisc -= discVal;
                 }
 
-                if (sumAllocated > recAmt) {
-                    showToast('Total allocated amount exceeds received amount', 'error');
-                    return;
+                if (allocVal > 0 || discVal > 0) {
+                    backendAllocations.push({
+                        invoiceId: bill.id,
+                        allocatedAmount: allocVal,
+                        discountAmount: discVal
+                    });
                 }
+            }
+
+            if (remDisc > 0.01) {
+                showToast(`Discount of ₹${parsedDisc.toFixed(2)} exceeds remaining unpaid balance on pending bills`, 'error');
+                return;
+            }
+
+            if (backendAllocations.length === 0) {
+                showToast('Please enter an amount to allocate against pending bills', 'error');
+                return;
+            }
+
+            if (Math.abs(sumAllocated - recAmt) > 0.01) {
+                showToast(`Total allocated (₹${sumAllocated.toFixed(2)}) must equal received amount (₹${recAmt.toFixed(2)})`, 'error');
+                return;
             }
 
             const payload = {
                 customerId,
                 amount: recAmt,
+                discount: parsedDisc,
                 date,
-                referenceType,
-                paymentMode,
-                referenceNo: ['BANK', 'UPI', 'CARD'].includes(paymentMode) ? referenceNo : '',
-                referenceDate: ['BANK', 'UPI', 'CARD'].includes(paymentMode) ? referenceDate : null,
                 note,
-                allocations: referenceType === 'AGAINST_REFERENCE' ? backendAllocations : []
+                allocations: backendAllocations
             };
 
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('sph_auth_token') || localStorage.getItem('token');
             const res = await fetch('/api/receipts/create', {
                 method: 'POST',
                 headers: {
@@ -195,10 +224,25 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                 return;
             }
 
-            showToast('Receipt saved successfully', 'success');
-            setTimeout(() => {
-                window.location.reload(); 
-            }, 1000);
+            showToast(editAR ? 'Receipt updated successfully' : 'Receipt saved successfully', 'success');
+            if (redirectAfter) {
+                setTimeout(() => {
+                    window.location.reload(); 
+                }, 1000);
+            } else {
+                setCustomerId('');
+                setReceivedAmount('');
+                setDiscountAmount('');
+                setAllocations({});
+                setNote('');
+                try {
+                    const cRes = await fetch('/api/payment-counter');
+                    const cData = await cRes.json();
+                    setArNo('AR' + String(cData.counter || 1).padStart(3, '0'));
+                } catch {
+                    // ignore
+                }
+            }
 
         } catch (err) {
             showToast('Failed to save receipt', 'error');
@@ -208,57 +252,53 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
     };
 
     return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <div style={{ fontWeight: '700', fontSize: '18px', color: 'var(--text-main)', marginTop: '8px' }}>
-                Create Customer Receipt
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <style>
+                {`
+                    @keyframes spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                `}
+            </style>
+
+            {/* Header */}
+            <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+                <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-main)' }}>
+                    {editAR ? 'Edit Customer Receipt' : 'Create Customer Receipt'}
+                </h1>
             </div>
 
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flex: 1 }}>
-                {/* Left Side: Basic Details & Pending Bills */}
-                <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+            {/* Grid Container */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', background: '#F8FAFC' }}>
+                
+                {/* Left Form Panel */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     
-                    <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)', borderBottom: '1px solid #E5E7EB', paddingBottom: '8px' }}>
-                            Basic Details
+                    {/* Basic Details */}
+                    <div className="create-card">
+                        <div className="create-card-title">Basic Details</div>
+                        <div className="form-row-two" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                                <label style={{ fontSize: '13px', fontWeight: '500' }}>Receipt No <span style={{ color: '#EF4444' }}>*</span></label>
+                                <input type="text" style={{ ...inputStyle, backgroundColor: '#F8F9FA', cursor: 'not-allowed' }} value={arNo} readOnly placeholder="AR No" />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                                <label style={{ fontSize: '13px', fontWeight: '500' }}>Date <span style={{ color: '#EF4444' }}>*</span></label>
+                                <input type="date" style={inputStyle} value={date} onChange={e => setDate(e.target.value)} />
+                            </div>
                         </div>
-                        
-                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                            <div style={{ flex: 1, minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Receipt No <span style={{ color: '#EF4444' }}>*</span></label>
-                                <input type="text" value={arNo} disabled style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', background: '#F3F4F6', boxSizing: 'border-box', width: '100%' }} />
-                            </div>
-                            
-                            <div style={{ flex: 1, minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Date <span style={{ color: '#EF4444' }}>*</span></label>
-                                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%' }} />
-                            </div>
 
-                            <div style={{ flex: 1, minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Reference Type <span style={{ color: '#EF4444' }}>*</span></label>
-                                <CustomSelect
-                                    value={referenceType}
-                                    onChange={(val) => {
-                                        setReferenceType(val);
-                                        setAllocations({});
-                                    }}
-                                    options={[
-                                        { value: 'AGAINST_REFERENCE', label: 'Against Reference' },
-                                        { value: 'ON_ACCOUNT', label: 'On Account' },
-                                        { value: 'ADVANCE', label: 'Advance' }
-                                    ]}
-                                />
-                            </div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', gap: '16px' }}>
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Customer <span style={{ color: '#EF4444' }}>*</span></label>
+                        <div className="form-row-two" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                                <label style={{ fontSize: '13px', fontWeight: '500' }}>Customer <span style={{ color: '#EF4444' }}>*</span></label>
                                 <CustomSelect
                                     value={customerId}
                                     onChange={(val) => {
                                         setCustomerId(val);
                                         setAllocations({});
                                         setReceivedAmount('');
+                                        setDiscountAmount('');
                                     }}
                                     placeholder="Select Customer"
                                     options={customers.map(c => ({ value: c.id, label: c.customerName || c.name }))}
@@ -267,192 +307,127 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                         </div>
                     </div>
                     
-                    {referenceType === 'AGAINST_REFERENCE' && (
-                        <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '200px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E5E7EB', padding: '12px 16px', background: 'white' }}>
-                                <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>
-                                    Pending Bills Allocation
-                                </span>
-                                <button
-                                    onClick={handleAutoAllocate}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        border: '1px solid #E2E8F0',
-                                        background: '#F8FAFC',
-                                        borderRadius: '6px',
-                                        padding: '6px 12px',
-                                        fontSize: '12px',
-                                        fontWeight: '600',
-                                        color: '#0F172A',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <Sparkles style={{ width: '13px', height: '13px', color: '#6366F1' }} />
-                                    Auto Allocate (Oldest First)
-                                </button>
-                            </div>
-                            <div style={{ flex: 1, overflowY: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ height: '40px', backgroundColor: '#F8FAFC' }}>
-                                            <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>S. No.</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>Date</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>INV No</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>Invoice Amount</th>
-                                            <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>Pending</th>
-                                            <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '120px' }}>Allocated Amount</th>
+                    {/* Pending Bills Allocation */}
+                    <div className="create-card" style={{ paddingBottom: '16px' }}>
+                        <div className="create-card-title">Pending Bills Allocation</div>
+                        <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ height: '38px', backgroundColor: '#F8FAFC' }}>
+                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '60px' }}>S. No.</th>
+                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '110px' }}>Date</th>
+                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>INV No</th>
+                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>Invoice Amount</th>
+                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>Pending</th>
+                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '150px' }}>Allocated Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pendingBills.length > 0 ? pendingBills.map((b, idx) => (
+                                        <tr key={b.id || idx} style={{ borderBottom: idx === pendingBills.length - 1 ? 'none' : '1px solid var(--border-color)', background: 'white' }}>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px' }}>{idx + 1}</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px' }}>{formatBillDate(b.date)}</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px', fontWeight: '500', color: '#1E293B' }}>{b.invoiceNumber}</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px', textAlign: 'right' }}>₹{b.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px', textAlign: 'right', fontWeight: '600', color: '#DC2626' }}>₹{b.pending.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '13px', textAlign: 'right', fontWeight: '600', color: allocations[b.id] && parseFloat(allocations[b.id]) > 0 ? '#16A34A' : 'var(--text-muted)' }}>
+                                                ₹{parseFloat(allocations[b.id] || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {pendingBills.length > 0 ? pendingBills.map((b, idx) => (
-                                            <tr key={b.id || idx}>
-                                                <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>{idx + 1}</td>
-                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>{new Date(b.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
-                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>{b.invoiceNumber}</td>
-                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>₹{b.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                                                <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>₹{b.pending.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                                                <td style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>
-                                                    <input
-                                                        type="number"
-                                                        placeholder="0.00"
-                                                        value={allocations[b.id] || ''}
-                                                        onChange={e => handleAllocationChange(b.id, e.target.value, b.pending)}
-                                                        style={{
-                                                            height: '32px',
-                                                            border: '1px solid var(--border-color)',
-                                                            borderRadius: '6px',
-                                                            padding: '0 8px',
-                                                            fontFamily: 'inherit',
-                                                            fontSize: '13px',
-                                                            outline: 'none',
-                                                            boxSizing: 'border-box',
-                                                            width: '100%',
-                                                            textAlign: 'right'
-                                                        }}
-                                                    />
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                                                    {customerId ? 'No pending bills for the selected customer.' : 'Select a customer to view pending bills.'}
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                    )) : (
+                                        <tr>
+                                            <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)', fontSize: '13px', background: 'white' }}>
+                                                {customerId ? 'No pending bills for the selected customer.' : 'Select a customer to view pending bills.'}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
+                    </div>
                 </div>
                 
-                {/* Right Side: Amount Details */}
-                <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '16px', flexShrink: 0 }}>
-                    <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)', borderBottom: '1px solid #E5E7EB', paddingBottom: '8px' }}>
-                            Amount Details
-                        </div>
+                {/* Right Sidebar Panel */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    
+                    {/* Amount Details */}
+                    <div className="create-card">
+                        <div className="create-card-title">Amount Details</div>
                         
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Received Amount <span style={{ color: '#EF4444' }}>*</span></label>
-                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                <span style={{ position: 'absolute', left: '12px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>₹</span>
-                                <input type="number" placeholder="0.00" value={receivedAmount} onChange={e => handleReceivedChange(e.target.value)} style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px 0 28px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%' }} />
+                        {/* Received Amount */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: '500' }}>Received Amount <span style={{ color: '#EF4444' }}>*</span></label>
+                            <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: 'white' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                                <input 
+                                    type="number" 
+                                    placeholder="0.00" 
+                                    value={receivedAmount} 
+                                    onChange={e => handleReceivedChange(e.target.value)} 
+                                    style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent' }} 
+                                />
                             </div>
                         </div>
 
-                        {referenceType === 'AGAINST_REFERENCE' && (
-                            <>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Allocated Amount</label>
-                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ position: 'absolute', left: '12px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>₹</span>
-                                        <input type="text" value={sumAllocated.toFixed(2)} readOnly style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px 0 28px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', background: '#F3F4F6', boxSizing: 'border-box', width: '100%' }} />
-                                    </div>
-                                </div>
+                        {/* Discount Field */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: '500' }}>Discount</label>
+                            <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: 'white' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                                <input 
+                                    type="number" 
+                                    placeholder="0.00" 
+                                    value={discountAmount} 
+                                    onChange={e => setDiscountAmount(e.target.value)} 
+                                    style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent' }} 
+                                />
+                            </div>
+                        </div>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Excess to Advance</label>
-                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                        <span style={{ position: 'absolute', left: '12px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>₹</span>
-                                        <input type="text" value={advanceAmount.toFixed(2)} readOnly style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px 0 28px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', background: '#F3F4F6', boxSizing: 'border-box', width: '100%' }} />
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Pending Amount</label>
-                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                <span style={{ position: 'absolute', left: '12px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>₹</span>
-                                <input type="text" value={totalPending.toFixed(2)} readOnly style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px 0 28px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', background: '#F3F4F6', boxSizing: 'border-box', width: '100%', fontWeight: '600' }} />
+                        {/* Pending Amount */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: '500' }}>Pending Amount</label>
+                            <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: '#F8F9FA' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                                <input 
+                                    type="text" 
+                                    value={remainingPending.toFixed(2)} 
+                                    readOnly 
+                                    style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent', fontWeight: '600', color: '#DC2626', cursor: 'not-allowed' }} 
+                                />
                             </div>
                         </div>
                     </div>
 
-                    <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)', borderBottom: '1px solid #E5E7EB', paddingBottom: '8px' }}>
-                            Payment Method
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Payment Mode <span style={{ color: '#EF4444' }}>*</span></label>
-                            <CustomSelect
-                                value={paymentMode}
-                                onChange={(val) => {
-                                    setPaymentMode(val);
-                                    setReferenceNo('');
-                                    setReferenceDate('');
-                                }}
-                                options={[
-                                    { value: 'CASH', label: 'Cash' },
-                                    { value: 'BANK', label: 'Bank Transfer' },
-                                    { value: 'UPI', label: 'UPI' },
-                                    { value: 'CARD', label: 'Card Payment' }
-                                ]}
+                    {/* Remarks Card */}
+                    <div className="create-card">
+                        <div className="create-card-title">Remarks</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                            <textarea 
+                                value={note} 
+                                onChange={e => setNote(e.target.value)} 
+                                placeholder="Enter optional remarks" 
+                                style={{ ...inputStyle, height: '70px', padding: '8px 12px', resize: 'none' }} 
                             />
-                        </div>
-
-                        {paymentMode !== 'CASH' && (
-                            <>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Ref. No / UTR</label>
-                                    <input type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)} placeholder="Enter transaction reference" style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%' }} />
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Ref. Date</label>
-                                    <input type="date" value={referenceDate} onChange={e => setReferenceDate(e.target.value)} style={{ height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%' }} />
-                                </div>
-                            </>
-                        )}
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Note / Remarks</label>
-                            <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Enter optional remarks" style={{ height: '60px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%', resize: 'none' }} />
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-                <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border-color)', color: 'var(--text-main)', background: 'white', borderRadius: '6px', padding: '8px 16px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}>
-                    <ChevronLeft style={{ width: '16px', height: '16px' }} /> Back
+            {/* Sticky Bottom Actions Bar (Footer) */}
+            <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
+                <button onClick={onBack} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                    <ChevronLeft size={16} /> Back
                 </button>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <style>
-                        {`
-                            @keyframes spin {
-                                from { transform: rotate(0deg); }
-                                to { transform: rotate(360deg); }
-                            }
-                        `}
-                    </style>
-                    <button onClick={handleSave} disabled={isSaving} style={{ border: 'none', color: 'white', background: isSaving ? '#6B7280' : '#000B58', borderRadius: '6px', padding: '8px 24px', fontSize: '14px', fontWeight: '500', cursor: isSaving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {isSaving && <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />}
-                        {isSaving ? 'Saving...' : 'Save Receipt'}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    {!editAR && (
+                        <button onClick={() => handleSave(false)} disabled={isSaving} style={{ height: '35px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                            Save & Add
+                        </button>
+                    )}
+                    <button onClick={() => handleSave(true)} disabled={isSaving} style={{ height: '35px', padding: '0 32px', border: 'none', borderRadius: '8px', background: isSaving ? '#6B7280' : '#000B58', color: 'white', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isSaving && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+                        {isSaving ? 'Saving...' : 'Save'}
                     </button>
                 </div>
             </div>
@@ -466,3 +441,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
         </div>
     );
 }
+
+
+
+

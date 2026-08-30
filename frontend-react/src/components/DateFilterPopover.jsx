@@ -4,16 +4,32 @@ import { ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, X } from 'lucide-
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const shortMonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export default function DateFilterPopover({ value, onChange }) {
+export default function DateFilterPopover({ value, onChange, align = 'left' }) {
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('day');
     const [currentViewDate, setCurrentViewDate] = useState(new Date());
+    const [popupAlign, setPopupAlign] = useState(align);
     
-    // For custom
+    // For week / custom range
+    const [rangeStart, setRangeStart] = useState(null);
+    const [rangeEnd, setRangeEnd] = useState(null);
+    const [hoverDate, setHoverDate] = useState(null);
+
     const [customStart, setCustomStart] = useState('');
     const [customEnd, setCustomEnd] = useState('');
 
     const containerRef = useRef(null);
+
+    useEffect(() => {
+        if (isOpen && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            if (align === 'right' || (rect.left + 280 > window.innerWidth - 20)) {
+                setPopupAlign('right');
+            } else {
+                setPopupAlign('left');
+            }
+        }
+    }, [isOpen, align]);
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -42,6 +58,9 @@ export default function DateFilterPopover({ value, onChange }) {
 
         onChange({ start, end, label, type });
         setIsOpen(false);
+        setRangeStart(null);
+        setRangeEnd(null);
+        setHoverDate(null);
     };
 
     const renderCalendar = (mode) => {
@@ -61,7 +80,7 @@ export default function DateFilterPopover({ value, onChange }) {
 
         return (
             <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <button onClick={() => setCurrentViewDate(new Date(year, month - 1, 1))} style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}>
                         <ChevronLeft style={{ width: '16px', height: '16px' }} />
                     </button>
@@ -70,6 +89,13 @@ export default function DateFilterPopover({ value, onChange }) {
                         <ChevronRight style={{ width: '16px', height: '16px' }} />
                     </button>
                 </div>
+
+                {mode === 'week' && (
+                    <div style={{ fontSize: '11.5px', color: rangeStart && !rangeEnd ? '#2563EB' : '#64748B', fontWeight: rangeStart && !rangeEnd ? '600' : '400', textAlign: 'center', marginBottom: '8px' }}>
+                        {rangeStart && !rangeEnd ? 'Click to select End Date' : 'Click to select Start Date'}
+                    </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '8px' }}>
                     {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
                         <div key={d} style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500' }}>{d}</div>
@@ -79,6 +105,42 @@ export default function DateFilterPopover({ value, onChange }) {
                     {days.map((d, i) => {
                         if (!d) return <div key={i}></div>;
                         const isToday = new Date().toDateString() === d.toDateString();
+
+                        let isStart = false;
+                        let isEnd = false;
+                        let isInRange = false;
+
+                        if (mode === 'week') {
+                            const dTime = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+                            const sTime = rangeStart ? new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate()).getTime() : null;
+                            const eTime = rangeEnd ? new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), rangeEnd.getDate()).getTime() : null;
+                            const hTime = hoverDate ? new Date(hoverDate.getFullYear(), hoverDate.getMonth(), hoverDate.getDate()).getTime() : null;
+
+                            if (sTime && dTime === sTime) isStart = true;
+                            if (eTime && dTime === eTime) isEnd = true;
+
+                            if (sTime && eTime) {
+                                isInRange = dTime > Math.min(sTime, eTime) && dTime < Math.max(sTime, eTime);
+                            } else if (sTime && !eTime && hTime) {
+                                isInRange = dTime > Math.min(sTime, hTime) && dTime < Math.max(sTime, hTime);
+                                if (dTime === hTime && dTime !== sTime) isEnd = true;
+                            }
+                        }
+
+                        let bg = 'transparent';
+                        let color = 'var(--text-main)';
+                        let fontWeight = isToday ? '600' : '400';
+
+                        if (isStart || isEnd) {
+                            bg = '#000B58';
+                            color = 'white';
+                            fontWeight = '600';
+                        } else if (isInRange) {
+                            bg = '#EFF6FF';
+                            color = '#1D4ED8';
+                            fontWeight = '500';
+                        }
+
                         return (
                             <div 
                                 key={i} 
@@ -86,13 +148,26 @@ export default function DateFilterPopover({ value, onChange }) {
                                     if (mode === 'day') {
                                         handleApply('day', d, d);
                                     } else if (mode === 'week') {
-                                        const dayOfWeek = d.getDay();
-                                        const diffToMonday = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-                                        const startOfWeek = new Date(d);
-                                        startOfWeek.setDate(diffToMonday);
-                                        const endOfWeek = new Date(startOfWeek);
-                                        endOfWeek.setDate(startOfWeek.getDate() + 6);
-                                        handleApply('week', startOfWeek, endOfWeek);
+                                        if (!rangeStart || (rangeStart && rangeEnd)) {
+                                            setRangeStart(d);
+                                            setRangeEnd(null);
+                                        } else {
+                                            const s = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate());
+                                            const e = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                            if (e.getTime() < s.getTime()) {
+                                                setRangeStart(e);
+                                                setRangeEnd(s);
+                                                handleApply('week', e, s);
+                                            } else {
+                                                setRangeEnd(e);
+                                                handleApply('week', s, e);
+                                            }
+                                        }
+                                    }
+                                }}
+                                onMouseEnter={() => {
+                                    if (mode === 'week' && rangeStart && !rangeEnd) {
+                                        setHoverDate(d);
                                     }
                                 }}
                                 style={{ 
@@ -100,11 +175,11 @@ export default function DateFilterPopover({ value, onChange }) {
                                     cursor: 'pointer', 
                                     borderRadius: '6px',
                                     fontSize: '12px', 
-                                    fontWeight: isToday ? '600' : '400',
-                                    color: 'var(--text-main)'
+                                    fontWeight,
+                                    color,
+                                    background: bg,
+                                    transition: 'background 0.15s ease'
                                 }}
-                                onMouseEnter={(e) => e.target.style.background = '#F1F5F9'}
-                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
                             >
                                 {d.getDate()}
                             </div>
@@ -267,7 +342,7 @@ export default function DateFilterPopover({ value, onChange }) {
                 <div style={{ 
                     position: 'absolute', 
                     top: 'calc(100% + 8px)', 
-                    left: 0, 
+                    ...(popupAlign === 'right' ? { right: 0 } : { left: 0 }),
                     background: 'white', 
                     borderRadius: '12px', 
                     boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
@@ -284,6 +359,9 @@ export default function DateFilterPopover({ value, onChange }) {
                                 onClick={() => {
                                     setActiveTab(t.id);
                                     setCurrentViewDate(new Date());
+                                    setRangeStart(null);
+                                    setRangeEnd(null);
+                                    setHoverDate(null);
                                 }}
                                 style={{ 
                                     display: 'flex', 

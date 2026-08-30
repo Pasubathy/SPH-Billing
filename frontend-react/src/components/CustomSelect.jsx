@@ -25,13 +25,17 @@ const CustomSelect = ({
   icon = null,
   width = '100%',
   height = '38px',
+  borderRadius = '8px',
   disabled = false,
   className = '',
   style = {},
+  triggerStyle = {},
   inline = false,
-  menuDirection = 'down',
+  menuDirection = 'auto',
+  minWidth = null,
 }) => {
   const [open, setOpen] = useState(false);
+  const [direction, setDirection] = useState(menuDirection === 'up' ? 'up' : 'down');
   const ref = useRef(null);
 
   const selected = options.find(o => String(o.value) === String(value));
@@ -45,6 +49,23 @@ const CustomSelect = ({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Determine menuDirection dynamically if auto
+  useEffect(() => {
+    if (menuDirection === 'up') {
+      setDirection('up');
+    } else if (menuDirection === 'down') {
+      setDirection('down');
+    } else if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 220 && rect.top > spaceBelow) {
+        setDirection('up');
+      } else {
+        setDirection('down');
+      }
+    }
+  }, [open, menuDirection]);
 
   const handleSelect = (val) => {
     if (onChange) onChange(val);
@@ -137,7 +158,7 @@ const CustomSelect = ({
           height,
           padding: '0 10px',
           border: open ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-          borderRadius: '8px',
+          borderRadius,
           backgroundColor: disabled ? '#F8FAFC' : 'white',
           display: 'flex',
           alignItems: 'center',
@@ -149,6 +170,7 @@ const CustomSelect = ({
           userSelect: 'none',
           opacity: disabled ? 0.6 : 1,
           boxSizing: 'border-box',
+          ...triggerStyle,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
@@ -182,11 +204,11 @@ const CustomSelect = ({
       {open && (
         <div style={{
           position: 'absolute',
-          top: menuDirection === 'up' ? 'auto' : 'calc(100% + 4px)',
-          bottom: menuDirection === 'up' ? 'calc(100% + 4px)' : 'auto',
+          top: direction === 'up' ? 'auto' : 'calc(100% + 4px)',
+          bottom: direction === 'up' ? 'calc(100% + 4px)' : 'auto',
           left: 0,
           right: 0,
-          minWidth: '160px',
+          minWidth: minWidth !== null ? minWidth : (parseInt(width) < 120 ? width : '160px'),
           background: 'white',
           border: '1px solid var(--border-color)',
           borderRadius: '10px',

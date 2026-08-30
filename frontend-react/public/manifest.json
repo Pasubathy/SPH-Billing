@@ -1,0 +1,78 @@
+{
+  "name": "Sri Parvathi Hardwares - SPH Billing",
+  "short_name": "SPH Billing",
+  "description": "Smart Billing, Inventory Management & Accounting Software for Sri Parvathi Hardwares",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#000B58",
+  "theme_color": "#000B58",
+  "orientation": "any",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/Images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/Images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/Images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/Images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Sale Invoice",
+      "short_name": "New Sale",
+      "description": "Create a new sales tax invoice",
+      "url": "/sales/create",
+      "icons": [{ "src": "/Images/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "New Purchase Invoice",
+      "short_name": "New Purchase",
+      "description": "Record a new purchase bill",
+      "url": "/purchase-invoice/create",
+      "icons": [{ "src": "/Images/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Inventory Items",
+      "short_name": "Items",
+      "description": "View and manage stock items",
+      "url": "/items",
+      "icons": [{ "src": "/Images/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Amount Received",
+      "short_name": "Receipts",
+      "description": "Record customer amount received",
+      "url": "/sales#amountReceived",
+      "icons": [{ "src": "/Images/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

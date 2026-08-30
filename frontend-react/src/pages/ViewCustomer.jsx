@@ -45,9 +45,11 @@ const ViewCustomer = ({
     const custReturns = (salesReturns || []).filter(sr => String(sr.customerId) === String(currentCustomer.id) || sr.customerName === currentCustomer.customerName || sr.customerName === currentCustomer.name);
 
     const totalInvoiced = custInvoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount || inv.grandTotal) || 0), 0);
-    const totalPaid = custPayments.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount) || 0), 0);
+    const directPaid = custInvoices.reduce((sum, inv) => sum + (parseFloat(inv.receivedAmount || inv.paidAmount || 0)), 0);
+    const standalonePaid = custPayments.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount || 0) + (parseFloat(p.discount || 0))), 0);
     const totalReturned = custReturns.reduce((sum, r) => sum + (parseFloat(r.grandTotal || r.totalAmount) || 0), 0);
-    const pendingBalance = Math.max(0, totalInvoiced - totalPaid - totalReturned);
+    const openingBal = parseFloat(currentCustomer.openingBalance || currentCustomer.opening_balance || 0);
+    const pendingBalance = Math.max(0, openingBal + totalInvoiced - (directPaid + standalonePaid) - totalReturned);
 
     // Helper: parse any date string into a valid Date object
     const parseRawDate = (dateStr) => {
@@ -373,9 +375,11 @@ const ViewCustomer = ({
                                 const cRets = (salesReturns || []).filter(sr => String(sr.customerId) === String(cId) || sr.customerName === cName);
                                 
                                 const invTotal = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount || inv.grandTotal) || 0), 0);
-                                const pmtTotal = cPmts.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount) || 0), 0);
+                                const directPaid = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.receivedAmount || inv.paidAmount || 0)), 0);
+                                const pmtTotal = cPmts.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount || 0) + (parseFloat(p.discount || 0))), 0);
                                 const retTotal = cRets.reduce((sum, r) => sum + (parseFloat(r.grandTotal || r.totalAmount) || 0), 0);
-                                const cBal = Math.max(0, invTotal - pmtTotal - retTotal);
+                                const openingBal = parseFloat(c.openingBalance || c.opening_balance || 0);
+                                const cBal = Math.max(0, openingBal + invTotal - (directPaid + pmtTotal) - retTotal);
 
                                 return (
                                     <div 

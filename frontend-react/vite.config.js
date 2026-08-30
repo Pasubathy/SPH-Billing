@@ -12,4 +12,28 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('html5-qrcode')) {
+              return 'vendor-scanner';
+            }
+            if (id.includes('react-router') || id.includes('@remix-run')) {
+              return 'vendor-router';
+            }
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react-core';
+            }
+            return 'vendor-libs';
+          }
+        }
+      }
+    }
+  }
 })

@@ -318,14 +318,14 @@ const Sales = () => {
                 <>
                     {/* Score Cards */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', padding: '16px', margin: 0 }}>
-                        <div style={{ background: 'white', border: '1.5px solid #000B58', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Total Amount</span>
+                        <div style={{ background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Total Amount</span>
                             <span style={{ fontSize: '20px', fontWeight: '700', color: '#000B58', alignSelf: 'flex-end' }}>
                                 ₹{totalAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}
                             </span>
                         </div>
-                        <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Amount to Receive</span>
+                        <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Amount to Receive</span>
                             <span style={{ fontSize: '20px', fontWeight: '700', color: '#EF4444', alignSelf: 'flex-end' }}>
                                 ₹{totalPending.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}
                             </span>
@@ -557,14 +557,14 @@ const Sales = () => {
                     <>
                         {/* Stat Cards */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', padding: '16px', margin: 0 }}>
-                            <div style={{ background: 'white', border: '1.5px solid #000B58', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                                <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Total Customers</span>
+                            <div style={{ background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Total Customers</span>
                                 <span style={{ fontSize: '20px', fontWeight: '700', color: '#000B58', alignSelf: 'flex-end' }}>
                                     {customers.length}
                                 </span>
                             </div>
-                            <div style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                                <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Amount To Receive</span>
+                            <div style={{ background: '#ECFDF5', border: '1px solid #D1FAE5', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Amount To Receive</span>
                                 <span style={{ fontSize: '20px', fontWeight: '700', color: '#10B981', alignSelf: 'flex-end' }}>
                                     ₹{globalAmountToReceive.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}
                                 </span>
@@ -673,14 +673,12 @@ const Sales = () => {
 
             {activeTab === 'amountReceived' && (
                 isCreatingAR ? (
-                    <div style={{ padding: '16px', display: 'flex', flex: 1, overflowY: 'auto' }}>
-                        <CreateAmountReceived 
-                            customers={customers} 
-                            salesInvoices={salesInvoices}
-                            editAR={editAR}
-                            onBack={() => { setIsCreatingAR(false); setEditAR(null); }} 
-                        />
-                    </div>
+                    <CreateAmountReceived 
+                        customers={customers} 
+                        salesInvoices={salesInvoices}
+                        editAR={editAR}
+                        onBack={() => { setIsCreatingAR(false); setEditAR(null); }} 
+                    />
                 ) : viewAR ? (
                     <ViewAmountReceived
                         initialAR={viewAR}
@@ -757,10 +755,11 @@ const Sales = () => {
                             <thead>
                                 <tr style={{ height: '40px' }}>
                                     <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '70px' }}>S. No.</th>
-                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Date</th>
-                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>AR No</th>
-                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '250px' }}>Customer Name</th>
-                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '200px' }}>Received Amount</th>
+                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '130px' }}>Date</th>
+                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '130px' }}>AR No</th>
+                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '220px' }}>Customer Name</th>
+                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Received Amount</th>
+                                    <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '130px' }}>Discount</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -776,11 +775,12 @@ const Sales = () => {
                                         <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{formatDate(ar.date)}</td>
                                         <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: '#2563EB', fontWeight: '500' }}>{ar.arNo || '-'}</td>
                                         <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{ar.customerName || '-'}</td>
-                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px' }}>₹{(parseFloat(ar.amount)||0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'right' }}>₹{(parseFloat(ar.amount)||0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'right', color: (parseFloat(ar.discount)||0) > 0 ? '#16A34A' : 'inherit' }}>₹{(parseFloat(ar.discount)||0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan="5" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                                        <td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '13px' }}>
                                             No amount received history found.
                                         </td>
                                     </tr>

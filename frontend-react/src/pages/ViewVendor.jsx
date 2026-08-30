@@ -107,9 +107,11 @@ const ViewVendor = () => {
     );
 
     const totalPurchased = vendorInvoices.reduce((s, pi) => s + (parseFloat(pi.amount) || 0), 0);
-    const totalPaid = vendorPmts.reduce((s, p) => s + calcActualPmt(p), 0);
+    const directPaid = vendorInvoices.reduce((s, pi) => s + (parseFloat(pi.paidAmount || pi.paid_amount || 0)), 0);
+    const totalPaid = directPaid + vendorPmts.reduce((s, p) => s + calcActualPmt(p), 0);
     const totalReturned = vendorReturns.reduce((s, pr) => s + (parseFloat(pr.grandTotal || pr.totalAmount) || 0), 0);
-    const pendingToPay = Math.max(0, totalPurchased - totalPaid - totalReturned);
+    const openingBal = parseFloat(vendor?.openingBalance || vendor?.opening_balance || 0);
+    const pendingToPay = Math.max(0, openingBal + totalPurchased - totalPaid - totalReturned);
 
     // All transactions combined
     const allTransactions = [
@@ -344,9 +346,11 @@ const ViewVendor = () => {
                             const vPmts = vendorPayments.filter(p => String(p.vendorId) === String(v.id) || p.vendorName === v.vendorName);
                             const vReturns = purchaseReturns.filter(pr => String(pr.vendorId) === String(v.id) || pr.vendorName === v.vendorName);
                             const vTotal = vInvoices.reduce((s, pi) => s + (parseFloat(pi.amount) || 0), 0);
-                            const vPaid = vPmts.reduce((s, p) => s + calcActualPmt(p), 0);
+                            const vDirectPaid = vInvoices.reduce((s, pi) => s + (parseFloat(pi.paidAmount || pi.paid_amount || 0)), 0);
+                            const vPaid = vDirectPaid + vPmts.reduce((s, p) => s + calcActualPmt(p), 0);
                             const vRet = vReturns.reduce((s, pr) => s + (parseFloat(pr.grandTotal || pr.totalAmount) || 0), 0);
-                            const vPending = Math.max(0, vTotal - vPaid - vRet);
+                            const vOpening = parseFloat(v.openingBalance || v.opening_balance || 0);
+                            const vPending = Math.max(0, vOpening + vTotal - vPaid - vRet);
                             return (
                                 <div
                                     key={v.id}

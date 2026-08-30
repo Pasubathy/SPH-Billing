@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { Scan, Search, X, List, LayoutGrid, ChevronDown, Plus, Package, Tag, Check, Download } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import CustomSelect from '../components/CustomSelect';
 
 const Items = () => {
+    const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [categories, setCategories] = useState([]);
     const [units, setUnits] = useState([]);
@@ -201,33 +202,38 @@ const Items = () => {
                                         const pPrice = parseFloat(item.purchasePrice !== undefined ? item.purchasePrice : item.purchaseAmount) || 0;
                                         const sPrice = parseFloat(item.sellingPrice !== undefined ? item.sellingPrice : item.sellingAmount) || 0;
                                         const shortUnit = getShortUnitName(item.unit);
-                                        const isLast = index === filteredItems.length - 1;
                                         
                                         return (
-                                            <tr key={item.code} style={{ borderBottom: isLast ? 'none' : '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{index + 1}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.code}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                        <div style={{ width: '28px', height: '28px', borderRadius: '4px', overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <tr 
+                                                key={item.code || index} 
+                                                onClick={() => navigate(`/items/view/${item.code}`)} 
+                                                style={{ height: '40px', cursor: 'pointer' }} 
+                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} 
+                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{index + 1}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{item.code}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: '#2563EB', fontWeight: '500' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <div style={{ width: '26px', height: '26px', borderRadius: '4px', overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #E2E8F0' }}>
                                                             {item.images && item.images.length > 0 ? 
                                                                 <img src={item.images[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 
-                                                                <Package size={16} color="#64748b" />
+                                                                <Package size={14} color="#64748b" />
                                                             }
                                                         </div>
-                                                        <Link to={`/items/view/${item.code}`} style={{ textDecoration: 'none', color: '#000B58', fontWeight: '600' }}>{item.name}</Link>
+                                                        <span>{item.name}</span>
                                                     </div>
                                                 </td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.category}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{item.stock || 0}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>{shortUnit}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: '1px solid var(--border-color)', textAlign: 'left' }}>₹{pPrice.toFixed(2)}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--text-main)', borderRight: 'none', textAlign: 'left' }}>₹{sPrice.toFixed(2)}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{item.category || '-'}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{item.stock || 0}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{shortUnit || '-'}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>₹{pPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px' }}>₹{sPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                             </tr>
-                                        )
+                                        );
                                     }) : (
                                         <tr>
-                                            <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                                            <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '14px', borderBottom: '1px solid var(--border-color)' }}>
                                                 No items found.
                                             </td>
                                         </tr>
@@ -237,8 +243,9 @@ const Items = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="items-grid" style={{ display: 'grid' }}>
+                    <div className="items-grid" style={{ display: 'grid', margin: 0, padding: 0, width: '100%' }}>
                         {filteredItems.map((item) => {
+                            const pPrice = parseFloat(item.purchasePrice !== undefined ? item.purchasePrice : item.purchaseAmount) || 0;
                             const sPrice = parseFloat(item.sellingPrice !== undefined ? item.sellingPrice : item.sellingAmount) || 0;
                             const shortUnit = getShortUnitName(item.unit);
                             
@@ -257,19 +264,21 @@ const Items = () => {
                             return (
                                 <div className="item-card" key={item.code}>
                                     <div className="item-card-top">
-                                        <div className="item-card-image" style={{ backgroundColor: item.images && item.images.length > 0 ? 'transparent' : '#F87171' }}>
+                                        <div className="item-card-image">
                                             {item.images && item.images.length > 0 ? 
                                                 <img src={item.images[0]} alt={item.name} /> : 
-                                                <Package size={24} color="white" />
+                                                <Package size={20} color="#94A3B8" />
                                             }
                                         </div>
                                         <div className="item-card-details">
-                                            <div className="item-card-code">{item.code}</div>
+                                            <div className="item-card-header-row">
+                                                <span className="item-card-code">{item.code}</span>
+                                                <span className="item-card-purchase-price">Rs.{pPrice.toFixed(2)}/{shortUnit}</span>
+                                            </div>
                                             <div className="item-card-name">
-                                                <Link to={`/items/view/${item.code}`} style={{ textDecoration: 'none', color: 'inherit' }}>{item.name}</Link>
+                                                <Link to={`/items/view/${item.code}`} style={{ textDecoration: 'none', color: '#000B58' }}>{item.name}</Link>
                                             </div>
                                             <div className="item-card-category">{item.category}</div>
-                                            <div className="item-card-purchase">{item.stock || 0} / {shortUnit}</div>
                                         </div>
                                     </div>
                                     <div className="item-card-bottom">
@@ -283,7 +292,7 @@ const Items = () => {
                                         </div>
                                     </div>
                                 </div>
-                            )
+                            );
                         })}
                     </div>
                 )}

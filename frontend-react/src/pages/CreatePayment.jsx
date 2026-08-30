@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Loader2, Sparkles } from 'lucide-react';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
-import CustomDatePicker from '../components/CustomDatePicker';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 
@@ -13,16 +12,11 @@ export default function CreatePayment() {
   const [pmtNo, setPmtNo] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [vendorId, setVendorId] = useState('');
-  
-  // Reference Type & Payment Mode
-  const [referenceType, setReferenceType] = useState('AGAINST_REFERENCE'); // AGAINST_REFERENCE, ON_ACCOUNT, ADVANCE
-  const [paymentMode, setPaymentMode] = useState('CASH'); // CASH, BANK, UPI, CARD
-  const [referenceNo, setReferenceNo] = useState('');
-  const [referenceDate, setReferenceDate] = useState('');
   const [note, setNote] = useState('');
 
   // Amount details
   const [paidAmount, setPaidAmount] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
   const [allocations, setAllocations] = useState({}); // { [invoiceId]: amountString }
   
   const [vendors, setVendors] = useState([]);
@@ -79,93 +73,114 @@ export default function CreatePayment() {
     });
 
     // Sort oldest first
-    bills.sort((a, b) => new Date(a.date) - new Date(b.date));
+    bills.sort((a, b) => {
+        const parseDateVal = (s) => {
+            if (!s) return 0;
+            if (typeof s === 'string' && s.includes('/')) {
+                const parts = s.split('/');
+                if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+            }
+            return new Date(s).getTime() || 0;
+        };
+        return parseDateVal(a.date) - parseDateVal(b.date);
+    });
     return bills;
   }, [vendorId, purchaseInvoices]);
 
-  const totalPending = pendingBills.reduce((sum, b) => sum + b.pending, 0);
+  const formatBillDate = (dStr) => {
+    if (!dStr) return '-';
+    if (typeof dStr === 'string' && dStr.includes('/')) return dStr;
+    try {
+        const d = new Date(dStr);
+        if (isNaN(d.getTime())) return String(dStr);
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+        return String(dStr);
+    }
+  };
 
+  const totalPending = pendingBills.reduce((sum, b) => sum + b.pending, 0);
+  const remainingPending = Math.max(0, totalPending - (parseFloat(paidAmount) || 0) - (parseFloat(discountAmount) || 0));
+
+  // Auto-allocate paid amount across pending bills when typed
   const handlePaidAmountChange = (val) => {
     setPaidAmount(val);
-    setAllocations({});
-  };
-
-  const handleAllocationChange = (invoiceId, val, maxVal) => {
-    const num = parseFloat(val) || 0;
-    if (num > maxVal) {
-        showToast(`Allocation cannot exceed pending amount of ${maxVal}`, 'warning');
-        setAllocations(prev => ({ ...prev, [invoiceId]: String(maxVal) }));
-        return;
-    }
-    setAllocations(prev => ({ ...prev, [invoiceId]: val }));
-  };
-
-  const handleAutoAllocate = () => {
-    const amt = parseFloat(paidAmount) || 0;
-    if (amt <= 0) {
-        showToast('Please enter paid amount first', 'error');
-        return;
-    }
-
-    let remaining = amt;
-    const newAllocations = {};
-    for (const bill of pendingBills) {
+    const paid = parseFloat(val) || 0;
+    if (paid <= 0 || pendingBills.length === 0) {
+      setAllocations({});
+    } else {
+      let remaining = paid;
+      const newAlloc = {};
+      for (const bill of pendingBills) {
         if (remaining <= 0) break;
         const apply = Math.min(remaining, bill.pending);
-        newAllocations[bill.id] = String(apply);
+        newAlloc[bill.id] = String(apply);
         remaining -= apply;
+      }
+      setAllocations(newAlloc);
     }
-    setAllocations(newAllocations);
-    showToast('Oldest first allocation applied', 'success');
   };
 
-  // Calculate totals
   const sumAllocated = Object.entries(allocations).reduce((sum, [_, val]) => sum + (parseFloat(val) || 0), 0);
-  const advanceAmount = Math.max(0, (parseFloat(paidAmount) || 0) - sumAllocated);
 
   const handleSave = async (redirect = true) => {
     if (isSaving) return;
     setIsSaving(true);
     try {
         const pmtAmt = parseFloat(paidAmount) || 0;
+        const parsedDisc = parseFloat(discountAmount) || 0;
         
         if (!vendorId) { showToast('Please select a vendor', 'error'); return; }
         if (!paymentDate) { showToast('Please select a date', 'error'); return; }
         if (pmtAmt <= 0) { showToast('Paid amount must be greater than 0', 'error'); return; }
+        if (parsedDisc < 0) { showToast('Discount cannot be negative', 'error'); return; }
 
-        let backendAllocations = [];
-        if (referenceType === 'AGAINST_REFERENCE') {
-            backendAllocations = Object.entries(allocations)
-                .map(([invoiceId, val]) => ({
-                    invoiceId,
-                    allocatedAmount: parseFloat(val) || 0
-                }))
-                .filter(a => a.allocatedAmount > 0);
+        const backendAllocations = [];
+        let remDisc = parsedDisc;
 
-            if (backendAllocations.length === 0) {
-                showToast('Please allocate the payment to at least one invoice', 'error');
-                return;
+        for (const bill of pendingBills) {
+            const allocVal = parseFloat(allocations[bill.id]) || 0;
+            let discVal = 0;
+            if (remDisc > 0) {
+                const maxDiscPossible = Math.max(0, bill.pending - allocVal);
+                discVal = Math.min(remDisc, maxDiscPossible);
+                remDisc -= discVal;
             }
 
-            if (sumAllocated > pmtAmt) {
-                showToast('Total allocated amount exceeds paid amount', 'error');
-                return;
+            if (allocVal > 0 || discVal > 0) {
+                backendAllocations.push({
+                    invoiceId: bill.id,
+                    allocatedAmount: allocVal,
+                    discountAmount: discVal
+                });
             }
+        }
+
+        if (remDisc > 0.01) {
+            showToast(`Discount of ₹${parsedDisc.toFixed(2)} exceeds remaining unpaid balance on pending bills`, 'error');
+            return;
+        }
+
+        if (backendAllocations.length === 0) {
+            showToast('Please enter an amount to allocate against pending bills', 'error');
+            return;
+        }
+
+        if (Math.abs(sumAllocated - pmtAmt) > 0.01) {
+            showToast(`Total allocated (₹${sumAllocated.toFixed(2)}) must equal paid amount (₹${pmtAmt.toFixed(2)})`, 'error');
+            return;
         }
 
         const payload = {
             vendorId,
             amount: pmtAmt,
+            discount: parsedDisc,
             date: paymentDate,
-            referenceType,
-            paymentMode,
-            referenceNo: ['BANK', 'UPI', 'CARD'].includes(paymentMode) ? referenceNo : '',
-            referenceDate: ['BANK', 'UPI', 'CARD'].includes(paymentMode) ? referenceDate : null,
             note,
-            allocations: referenceType === 'AGAINST_REFERENCE' ? backendAllocations : []
+            allocations: backendAllocations
         };
 
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('sph_auth_token') || localStorage.getItem('token');
         const res = await fetch('/api/vendor-payments/create', {
             method: 'POST',
             headers: {
@@ -186,7 +201,18 @@ export default function CreatePayment() {
         if (redirect) {
           setTimeout(() => navigate('/payment'), 1000);
         } else {
-          setTimeout(() => window.location.reload(), 1000);
+          setVendorId('');
+          setPaidAmount('');
+          setDiscountAmount('');
+          setAllocations({});
+          setNote('');
+          try {
+            const cRes = await fetch('/api/vendor-payment-counter');
+            const cData = await cRes.json();
+            setPmtNo('PMT' + String(cData.counter || 1).padStart(3, '0'));
+          } catch {
+            // ignore
+          }
         }
     } catch (err) {
         showToast('Failed to save payment', 'error');
@@ -199,260 +225,192 @@ export default function CreatePayment() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <style>
         {`
-          .responsive-layout { display: flex; gap: 16px; align-items: flex-start; flex: 1; padding-bottom: 80px; width: 100%; }
-          .responsive-right-col { width: 320px; flex-shrink: 0; }
-          .responsive-grid-2 { display: flex; gap: 16px; }
-          @media (max-width: 992px) {
-            .responsive-layout { flex-direction: column; }
-            .responsive-right-col { width: 100%; }
-            .responsive-grid-2 { flex-direction: column; }
-          }
           @keyframes spin {
               from { transform: rotate(0deg); }
               to { transform: rotate(360deg); }
           }
         `}
       </style>
+
+      {/* Header */}
       <div className="page-header" style={{ height: '45px', padding: '0 16px', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
-        <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Create Vendor Payment</h1>
+        <h1 className="page-title" style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-main)' }}>
+          Create Vendor Payment
+        </h1>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', background: '#F8FAFC' }}>
-        <div className="responsive-layout">
+      {/* Grid Container */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', background: '#F8FAFC' }}>
+        
+        {/* Left Form Panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          {/* Left Column */}
-          <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0, width: '100%' }}>
+          {/* Basic Details */}
+          <div className="create-card">
+            <div className="create-card-title">Basic Details</div>
             
-            <div className="create-card" style={{ marginBottom: 0, background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-              <div className="create-card-title" style={{ padding: '16px', fontWeight: '600', borderBottom: '1px solid var(--border-color)' }}>Basic Details</div>
-              <div className="create-card-body" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="responsive-grid-2">
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>PMT No. <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="text" style={{ ...inputStyle, background: '#F3F4F6' }} readOnly value={pmtNo} />
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Date <span style={{ color: '#EF4444' }}>*</span></label>
-                    <CustomDatePicker 
-                        value={paymentDate} 
-                        onChange={(val) => setPaymentDate(val)} 
-                        style={inputStyle} 
-                    />
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Reference Type <span style={{ color: '#EF4444' }}>*</span></label>
-                    <CustomSelect 
-                        value={referenceType} 
-                        onChange={(val) => {
-                            setReferenceType(val);
-                            setAllocations({});
-                        }} 
-                        options={[
-                            { value: 'AGAINST_REFERENCE', label: 'Against Reference' },
-                            { value: 'ON_ACCOUNT', label: 'On Account' },
-                            { value: 'ADVANCE', label: 'Advance' }
-                        ]} 
-                    />
-                  </div>
-                </div>
-                
-                <div className="responsive-grid-2">
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Vendor <span style={{ color: '#EF4444' }}>*</span></label>
-                    <CustomSelect 
-                        value={vendorId} 
-                        onChange={(val) => {
-                            setVendorId(val);
-                            setAllocations({});
-                            setPaidAmount('');
-                        }} 
-                        placeholder="Select Vendor" 
-                        options={vendors.map(v => ({ value: v.id, label: v.vendorName }))} 
-                    />
-                  </div>
-                </div>
+            <div className="form-row-two" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                <label style={{ fontSize: '13px', fontWeight: '500' }}>PMT No. <span style={{ color: '#EF4444' }}>*</span></label>
+                <input type="text" style={{ ...inputStyle, backgroundColor: '#F8F9FA', cursor: 'not-allowed' }} readOnly value={pmtNo} placeholder="PMT No" />
               </div>
-            </div>
-
-            {referenceType === 'AGAINST_REFERENCE' && (
-              <div className="create-card" style={{ padding: 0, display: 'flex', flexDirection: 'column', minHeight: '200px', overflow: 'hidden', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}>
-                  <span style={{ fontWeight: '600', fontSize: '14px' }}>Pending Bills</span>
-                  <button
-                    onClick={handleAutoAllocate}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      border: '1px solid #E2E8F0',
-                      background: '#F8FAFC',
-                      borderRadius: '6px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: '#0F172A',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Sparkles style={{ width: '13px', height: '13px', color: '#6366F1' }} />
-                    Auto Allocate (Oldest First)
-                  </button>
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ height: '40px', background: '#F1F3F5', borderBottom: '1px solid var(--border-color)' }}>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', borderRight: '1px solid var(--border-color)', width: '70px' }}>S. No.</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', borderRight: '1px solid var(--border-color)', width: '150px' }}>Date</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', borderRight: '1px solid var(--border-color)', width: '150px' }}>PI No.</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', borderRight: '1px solid var(--border-color)' }}>Purchase Amount</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', borderRight: '1px solid var(--border-color)', width: '150px' }}>Pending</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: '500', color: '#1A1A1A', width: '120px' }}>Allocated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingBills.length === 0 ? (
-                        <tr>
-                          <td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Select a vendor to view pending bills</td>
-                        </tr>
-                      ) : (
-                        pendingBills.map((bill, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', borderRight: '1px solid var(--border-color)' }}>{idx + 1}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', borderRight: '1px solid var(--border-color)' }}>{bill.date}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', borderRight: '1px solid var(--border-color)', color: '#2563EB', fontWeight: '500' }}>{bill.piNo}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', borderRight: '1px solid var(--border-color)' }}>₹{bill.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', borderRight: '1px solid var(--border-color)', color: '#EF4444', fontWeight: '600' }}>₹{bill.pending.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                            <td style={{ padding: '6px 16px', textAlign: 'right' }}>
-                              <input
-                                  type="number"
-                                  placeholder="0.00"
-                                  value={allocations[bill.id] || ''}
-                                  onChange={e => handleAllocationChange(bill.id, e.target.value, bill.pending)}
-                                  style={{
-                                      height: '32px',
-                                      border: '1px solid var(--border-color)',
-                                      borderRadius: '6px',
-                                      padding: '0 8px',
-                                      fontFamily: 'inherit',
-                                      fontSize: '13px',
-                                      outline: 'none',
-                                      boxSizing: 'border-box',
-                                      width: '100%',
-                                      textAlign: 'right'
-                                  }}
-                              />
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          {/* Right Column */}
-          <div className="responsive-right-col" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="create-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-              <div className="create-card-title" style={{ margin: '-16px -16px 16px -16px', borderBottom: '1px solid var(--border-color)', padding: '16px', fontWeight: '600' }}>Amount Details</div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Paid Amount <span style={{ color: '#EF4444' }}>*</span></label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '12px', fontSize: '13px', fontWeight: '500' }}>₹</span>
-                  <input type="number" value={paidAmount} onChange={(e) => handlePaidAmountChange(e.target.value)} style={{ ...inputStyle, paddingLeft: '28px' }} />
-                </div>
-              </div>
-
-              {referenceType === 'AGAINST_REFERENCE' && (
-                  <>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Allocated Amount</label>
-                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                              <span style={{ position: 'absolute', left: '12px', fontSize: '13px', fontWeight: '500' }}>₹</span>
-                              <input type="text" readOnly value={sumAllocated.toFixed(2)} style={{ ...inputStyle, paddingLeft: '28px', background: '#F3F4F6' }} />
-                          </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Excess to Advance</label>
-                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                              <span style={{ position: 'absolute', left: '12px', fontSize: '13px', fontWeight: '500' }}>₹</span>
-                              <input type="text" readOnly value={advanceAmount.toFixed(2)} style={{ ...inputStyle, paddingLeft: '28px', background: '#F3F4F6' }} />
-                          </div>
-                      </div>
-                  </>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Pending Amount</label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '12px', fontSize: '13px', fontWeight: '500' }}>₹</span>
-                  <input type="text" readOnly value={totalPending.toFixed(2)} style={{ ...inputStyle, paddingLeft: '28px', background: '#F3F4F6', fontWeight: '600' }} />
-                </div>
-              </div>
-            </div>
-
-            <div className="create-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-              <div className="create-card-title" style={{ margin: '-16px -16px 16px -16px', borderBottom: '1px solid var(--border-color)', padding: '16px', fontWeight: '600' }}>Payment Method</div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Payment Mode <span style={{ color: '#EF4444' }}>*</span></label>
-                <CustomSelect 
-                    value={paymentMode} 
-                    onChange={(val) => {
-                        setPaymentMode(val);
-                        setReferenceNo('');
-                        setReferenceDate('');
-                    }} 
-                    options={[
-                        { value: 'CASH', label: 'Cash' },
-                        { value: 'BANK', label: 'Bank Transfer' },
-                        { value: 'UPI', label: 'UPI' },
-                        { value: 'CARD', label: 'Card' }
-                    ]} 
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                <label style={{ fontSize: '13px', fontWeight: '500' }}>Date <span style={{ color: '#EF4444' }}>*</span></label>
+                <input 
+                  type="date" 
+                  value={paymentDate} 
+                  onChange={e => setPaymentDate(e.target.value)} 
+                  style={inputStyle} 
                 />
               </div>
-
-              {paymentMode !== 'CASH' && (
-                  <>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Ref. No / UTR</label>
-                          <input type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)} placeholder="Enter transaction reference" style={inputStyle} />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Ref. Date</label>
-                          <input type="date" value={referenceDate} onChange={e => setReferenceDate(e.target.value)} style={inputStyle} />
-                      </div>
-                  </>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>Note / Remarks</label>
-                <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Enter optional remarks" style={{ height: '60px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', boxSizing: 'border-box', width: '100%', resize: 'none' }} />
+            </div>
+            
+            <div className="form-row-two" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                <label style={{ fontSize: '13px', fontWeight: '500' }}>Vendor <span style={{ color: '#EF4444' }}>*</span></label>
+                <CustomSelect 
+                  value={vendorId} 
+                  onChange={(val) => {
+                    setVendorId(val);
+                    setAllocations({});
+                    setPaidAmount('');
+                    setDiscountAmount('');
+                  }} 
+                  placeholder="Select Vendor" 
+                  options={vendors.map(v => ({ value: v.id, label: v.vendorName }))} 
+                />
               </div>
+            </div>
+          </div>
+
+          {/* Pending Bills Allocation Table */}
+          <div className="create-card" style={{ paddingBottom: '16px' }}>
+            <div className="create-card-title">Pending Bills Allocation</div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ height: '38px', backgroundColor: '#F8FAFC' }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '60px' }}>S. No.</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '110px' }}>Date</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>PI No.</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>Purchase Amount</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '130px' }}>Pending</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', width: '150px' }}>Allocated Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingBills.length > 0 ? (
+                    pendingBills.map((bill, idx) => (
+                      <tr key={bill.id || idx} style={{ borderBottom: idx === pendingBills.length - 1 ? 'none' : '1px solid var(--border-color)', background: 'white' }}>
+                        <td style={{ padding: '10px 12px', fontSize: '13px' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '13px' }}>{formatBillDate(bill.date)}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '13px', color: '#2563EB', fontWeight: '500' }}>{bill.piNo}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '13px', textAlign: 'right' }}>₹{bill.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '13px', textAlign: 'right', color: '#DC2626', fontWeight: '600' }}>₹{bill.pending.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '13px', fontWeight: '600', color: allocations[bill.id] && parseFloat(allocations[bill.id]) > 0 ? '#16A34A' : 'var(--text-muted)' }}>
+                          ₹{parseFloat(allocations[bill.id] || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)', fontSize: '13px', background: 'white' }}>
+                        {vendorId ? 'No pending bills for the selected vendor.' : 'Select a vendor to view pending bills.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Sidebar Panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* Amount Details Card */}
+          <div className="create-card">
+            <div className="create-card-title">Amount Details</div>
+            
+            {/* Paid Amount */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '500' }}>Paid Amount <span style={{ color: '#EF4444' }}>*</span></label>
+              <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: 'white' }}>
+                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                <input 
+                  type="number" 
+                  placeholder="0.00"
+                  value={paidAmount} 
+                  onChange={(e) => handlePaidAmountChange(e.target.value)} 
+                  style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent' }} 
+                />
+              </div>
+            </div>
+
+            {/* Discount */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '500' }}>Discount</label>
+              <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: 'white' }}>
+                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                <input 
+                  type="number" 
+                  placeholder="0.00"
+                  value={discountAmount} 
+                  onChange={(e) => setDiscountAmount(e.target.value)} 
+                  style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent' }} 
+                />
+              </div>
+            </div>
+
+            {/* Pending Amount */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '500' }}>Pending Amount</label>
+              <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', position: 'relative', background: '#F8F9FA' }}>
+                <span style={{ display: 'flex', alignItems: 'center', background: '#F1F5F9', borderRight: '1px solid var(--border-color)', padding: '0 12px', fontSize: '13px', borderTopLeftRadius: '5px', borderBottomLeftRadius: '5px' }}>₹</span>
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={remainingPending.toFixed(2)} 
+                  style={{ border: 'none', outline: 'none', padding: '0 12px', flex: 1, fontSize: '13px', background: 'transparent', fontWeight: '600', color: '#DC2626', cursor: 'not-allowed' }} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Remarks Card */}
+          <div className="create-card">
+            <div className="create-card-title">Remarks</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+              <textarea 
+                value={note} 
+                onChange={e => setNote(e.target.value)} 
+                placeholder="Enter optional remarks" 
+                style={{ ...inputStyle, height: '70px', padding: '8px 12px', resize: 'none' }} 
+              />
             </div>
           </div>
 
         </div>
       </div>
 
-      <div className="sticky-action-bar-new" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', boxSizing: 'border-box' }}>
+      {/* Sticky Bottom Action Bar */}
+      <div className="sticky-action-bar-new" style={{ height: '60px', background: 'white', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
         <button onClick={() => navigate('/payment')} style={{ height: '35px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
           <ChevronLeft size={16} /> Back
         </button>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={() => handleSave(false)} disabled={isSaving} style={{ height: '35px', padding: '0 16px', border: '1px solid #000B58', color: '#000B58', borderRadius: '8px', background: 'white', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600' }}>Save & Add</button>
-          <button onClick={() => handleSave(true)} disabled={isSaving} style={{ height: '35px', padding: '0 16px', border: 'none', color: 'white', borderRadius: '8px', background: isSaving ? '#6B7280' : '#000B58', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {isSaving && <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />}
+          <button onClick={() => handleSave(false)} disabled={isSaving} style={{ height: '35px', padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500' }}>
+            Save & Add
+          </button>
+          <button onClick={() => handleSave(true)} disabled={isSaving} style={{ height: '35px', padding: '0 32px', border: 'none', borderRadius: '8px', background: isSaving ? '#6B7280' : '#000B58', color: 'white', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {isSaving && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
               {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
 
+      {/* Toast Notification */}
       {toast && (
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 99999, background: toast.type === 'success' ? '#22C55E' : '#EF4444', color: 'white', padding: '12px 20px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             {toast.msg}
@@ -461,3 +419,4 @@ export default function CreatePayment() {
     </div>
   );
 }
+

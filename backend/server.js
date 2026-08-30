@@ -27,11 +27,23 @@ for (const envVar of requiredEnv) {
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+const compression = require('compression');
+
 const app = express();
 const HTTP_PORT = 3000;
 const HTTPS_PORT = 3443;
 
-// Middleware
+// Performance & Compression Middleware
+app.use(compression({
+    level: 6,
+    threshold: 1024, // Compress responses above 1KB
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) return false;
+        return compression.filter(req, res);
+    }
+}));
+
+// Body Parsing Middleware
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
@@ -129,6 +141,10 @@ const pool = new Pool({
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+pool.on('error', (err) => {
+    console.warn('Unexpected error on idle PostgreSQL client (auto-reconnected):', err.message);
+});
+
 // Helper to initialize the DB table
 
 async function insertAuditLog(client, { tableName, recordId, action, oldData, newData, req, transactionId }) {
@@ -152,6 +168,39 @@ async function insertAuditLog(client, { tableName, recordId, action, oldData, ne
         req.method,
         req.originalUrl || req.url
     ]);
+}
+
+function parseDateForDB(dateVal) {
+    if (!dateVal) return null;
+    if (typeof dateVal !== 'string') {
+        if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+            return dateVal.toISOString().split('T')[0];
+        }
+        return null;
+    }
+    const str = dateVal.trim();
+    if (!str) return null;
+    // DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, '0');
+        const month = dmyMatch[2].padStart(2, '0');
+        const year = dmyMatch[3];
+        return `${year}-${month}-${day}`;
+    }
+    // YYYY-MM-DD or YYYY/MM/DD
+    const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (ymdMatch) {
+        const year = ymdMatch[1];
+        const month = ymdMatch[2].padStart(2, '0');
+        const day = ymdMatch[3].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+    return null;
 }
 
 async function initDB() {
@@ -352,11 +401,12 @@ async function initDB() {
                 receipt_no TEXT UNIQUE NOT NULL,
                 date DATE NOT NULL,
                 customer_id TEXT NOT NULL REFERENCES customers(id),
-                reference_type TEXT NOT NULL,
+                reference_type TEXT DEFAULT 'DIRECT',
                 amount NUMERIC NOT NULL CHECK (amount > 0),
                 allocated_amount NUMERIC NOT NULL DEFAULT 0 CHECK (allocated_amount >= 0),
                 advance_amount NUMERIC NOT NULL DEFAULT 0 CHECK (advance_amount >= 0),
-                payment_mode TEXT NOT NULL,
+                discount_amount NUMERIC NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+                payment_mode TEXT,
                 reference_no TEXT,
                 reference_date DATE,
                 note TEXT,
@@ -372,7 +422,8 @@ async function initDB() {
                 id TEXT PRIMARY KEY,
                 receipt_id TEXT NOT NULL REFERENCES customer_receipts(id) ON DELETE CASCADE,
                 invoice_id TEXT NOT NULL REFERENCES sales_invoices(id),
-                allocated_amount NUMERIC NOT NULL CHECK (allocated_amount > 0),
+                allocated_amount NUMERIC NOT NULL DEFAULT 0 CHECK (allocated_amount >= 0),
+                discount_amount NUMERIC NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
             CREATE INDEX IF NOT EXISTS idx_allocations_receipt ON customer_receipt_allocations(receipt_id);
@@ -451,10 +502,64 @@ async function initDB() {
             ALTER TABLE customer_receipts ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
             ALTER TABLE customer_receipts ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
             ALTER TABLE customer_receipts ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+            ALTER TABLE customer_receipts ALTER COLUMN customer_id DROP NOT NULL;
+            ALTER TABLE customer_receipts DROP CONSTRAINT IF EXISTS customer_receipts_customer_id_fkey;
+            ALTER TABLE customer_receipts ALTER COLUMN reference_type DROP NOT NULL;
+            ALTER TABLE customer_receipts ALTER COLUMN reference_type SET DEFAULT 'DIRECT';
+            ALTER TABLE customer_receipts ALTER COLUMN payment_mode DROP NOT NULL;
+            ALTER TABLE customer_receipts ADD COLUMN IF NOT EXISTS discount_amount NUMERIC NOT NULL DEFAULT 0;
+            ALTER TABLE customer_receipt_allocations ADD COLUMN IF NOT EXISTS discount_amount NUMERIC NOT NULL DEFAULT 0;
 
             ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
             ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
             ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+            ALTER TABLE vendor_payments ALTER COLUMN reference_type DROP NOT NULL;
+            ALTER TABLE vendor_payments ALTER COLUMN reference_type SET DEFAULT 'DIRECT';
+            ALTER TABLE vendor_payments ALTER COLUMN payment_mode DROP NOT NULL;
+            ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS discount_amount NUMERIC NOT NULL DEFAULT 0;
+            ALTER TABLE vendor_payment_allocations ADD COLUMN IF NOT EXISTS discount_amount NUMERIC NOT NULL DEFAULT 0;
+
+            -- Vouchers and Expense Categories
+            CREATE TABLE IF NOT EXISTS vouchers (
+                id TEXT PRIMARY KEY,
+                voucher_no TEXT UNIQUE NOT NULL,
+                voucher_type TEXT NOT NULL,
+                date DATE NOT NULL,
+                category TEXT NOT NULL,
+                party_name TEXT NOT NULL,
+                payment_mode TEXT NOT NULL,
+                reference_no TEXT,
+                amount NUMERIC NOT NULL,
+                tax_rate NUMERIC DEFAULT 0,
+                amount_in_words TEXT,
+                narration TEXT,
+                attachment TEXT,
+                status TEXT DEFAULT 'ACTIVE',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS expense_categories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT DEFAULT 'Expense',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+
+            -- 🚀 Performance Indexes for Sub-millisecond Queries
+            CREATE INDEX IF NOT EXISTS idx_vouchers_date_status ON vouchers(date, status);
+            CREATE INDEX IF NOT EXISTS idx_vouchers_type ON vouchers(voucher_type);
+            CREATE INDEX IF NOT EXISTS idx_sales_invoices_date_status ON sales_invoices(date, status);
+            CREATE INDEX IF NOT EXISTS idx_sales_invoices_cust ON sales_invoices(customer_id);
+            CREATE INDEX IF NOT EXISTS idx_purchase_invoices_date_status ON purchase_invoices(date, status);
+            CREATE INDEX IF NOT EXISTS idx_purchase_invoices_vend ON purchase_invoices(vendor_id);
+            CREATE INDEX IF NOT EXISTS idx_customer_receipts_date_status ON customer_receipts(date, status);
+            CREATE INDEX IF NOT EXISTS idx_vendor_payments_date ON vendor_payments(date);
+            CREATE INDEX IF NOT EXISTS idx_sales_returns_date ON sales_returns(date);
+            CREATE INDEX IF NOT EXISTS idx_purchase_returns_date ON purchase_returns(date);
+            CREATE INDEX IF NOT EXISTS idx_items_lookup ON items(code, name, category_name);
+            CREATE INDEX IF NOT EXISTS idx_customers_lookup ON customers(phone_number, customer_name);
+            CREATE INDEX IF NOT EXISTS idx_vendors_lookup ON vendors(phone_number, vendor_name);
         `);
         
         const res = await pool.query('SELECT COUNT(*) FROM store');
@@ -591,82 +696,155 @@ app.post('/api/auth/logout', async (req, res) => {
     }
 });
 
-// Core Settings / Counters (still in JSON store)
+// Core Settings / Counters (PostgreSQL backed with sequence fallback)
 app.get('/api/invoice-counter', async (req, res) => {
     try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'sales_invoice' AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
         const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(invoice_no, '^INV', '', 'g') AS INTEGER)) as max_val FROM sales_invoices WHERE invoice_no ~ '^INV[0-9]+$'");
-        const maxVal = parseInt(result.rows[0].max_val) || 0;
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
         
-        const db = await readDB();
-        const jsonCounter = db.invoice_counter || 1;
-        
-        const nextCounter = Math.max(jsonCounter, maxVal + 1);
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
         res.json({ counter: nextCounter });
     } catch (e) {
         console.error('Error fetching invoice counter:', e);
-        res.json({ counter: (await readDB()).invoice_counter || 1 });
+        res.json({ counter: 1 });
     }
 });
 app.post('/api/invoice-counter', async (req, res) => {
-    const db = await readDB(); db.invoice_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.invoice_counter });
+    try {
+        const val = parseInt(req.body.counter) || 1;
+        await pool.query(
+            "UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'sales_invoice' AND financial_year = 'ALL'",
+            [Math.max(0, val - 1)]
+        );
+        const db = await readDB(); db.invoice_counter = val; await writeDB(db);
+        res.json({ success: true, counter: val });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.get('/api/return-counter', async (req, res) => {
     try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'sales_return' AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
         const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(return_no, '^RET', '', 'g') AS INTEGER)) as max_val FROM sales_returns WHERE return_no ~ '^RET[0-9]+$'");
-        const maxVal = parseInt(result.rows[0].max_val) || 0;
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
         
-        const db = await readDB();
-        const jsonCounter = db.return_counter || 1;
-        
-        const nextCounter = Math.max(jsonCounter, maxVal + 1);
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
         res.json({ counter: nextCounter });
     } catch (e) {
         console.error('Error fetching return counter:', e);
-        res.json({ counter: (await readDB()).return_counter || 1 });
+        res.json({ counter: 1 });
     }
 });
 app.post('/api/return-counter', async (req, res) => {
-    const db = await readDB(); db.return_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.return_counter });
+    try {
+        const val = parseInt(req.body.counter) || 1;
+        await pool.query(
+            "UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'sales_return' AND financial_year = 'ALL'",
+            [Math.max(0, val - 1)]
+        );
+        const db = await readDB(); db.return_counter = val; await writeDB(db);
+        res.json({ success: true, counter: val });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
-
 
 app.get('/api/pret-counter', async (req, res) => {
     try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'purchase_return' AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
         const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(return_no, '^PRET', '', 'g') AS INTEGER)) as max_val FROM purchase_returns WHERE return_no ~ '^PRET[0-9]+$'");
-        const maxVal = parseInt(result.rows[0].max_val) || 0;
-        const db = await readDB();
-        const jsonCounter = db.pret_counter || 1;
-        const nextCounter = Math.max(jsonCounter, maxVal + 1);
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
+        
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
         res.json({ counter: nextCounter });
     } catch (e) {
         console.error('Error fetching pret counter:', e);
-        res.json({ counter: (await readDB()).pret_counter || 1 });
+        res.json({ counter: 1 });
     }
 });
 app.post('/api/pret-counter', async (req, res) => {
-    const db = await readDB(); db.pret_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.pret_counter });
+    try {
+        const val = parseInt(req.body.counter) || 1;
+        await pool.query(
+            "UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'purchase_return' AND financial_year = 'ALL'",
+            [Math.max(0, val - 1)]
+        );
+        const db = await readDB(); db.pret_counter = val; await writeDB(db);
+        res.json({ success: true, counter: val });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
-app.get('/api/payment-counter', async (req, res) => res.json({ counter: (await readDB()).payment_counter || 1 }));
+app.get('/api/payment-counter', async (req, res) => {
+    try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE (document_type = 'customer_receipt' OR prefix = 'AR') AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
+        const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(receipt_no, '^AR', '', 'g') AS INTEGER)) as max_val FROM customer_receipts WHERE receipt_no ~ '^AR[0-9]+$'");
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
+        
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
+        res.json({ counter: nextCounter });
+    } catch (e) {
+        console.error('Error fetching AR counter:', e);
+        res.json({ counter: 1 });
+    }
+});
 app.post('/api/payment-counter', async (req, res) => {
-    const db = await readDB(); db.payment_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.payment_counter });
+    const val = parseInt(req.body.counter) || 1;
+    const db = await readDB(); db.payment_counter = val; await writeDB(db);
+    res.json({ success: true, counter: val });
 });
 
-app.get('/api/pi-counter', async (req, res) => res.json({ counter: (await readDB()).pi_counter || 1 }));
+app.get('/api/pi-counter', async (req, res) => {
+    try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'purchase_invoice' AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
+        const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(pi_no, '^PI', '', 'g') AS INTEGER)) as max_val FROM purchase_invoices WHERE pi_no ~ '^PI[0-9]+$'");
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
+        
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
+        res.json({ counter: nextCounter });
+    } catch (e) {
+        console.error('Error fetching PI counter:', e);
+        res.json({ counter: 1 });
+    }
+});
 app.post('/api/pi-counter', async (req, res) => {
-    const db = await readDB(); db.pi_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.pi_counter });
+    const val = parseInt(req.body.counter) || 1;
+    const db = await readDB(); db.pi_counter = val; await writeDB(db);
+    res.json({ success: true, counter: val });
 });
 
-app.get('/api/vendor-payment-counter', async (req, res) => res.json({ counter: (await readDB()).vendor_payment_counter || 1 }));
+app.get('/api/vendor-payment-counter', async (req, res) => {
+    try {
+        const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE (document_type = 'vendor_payment' OR prefix = 'PMT') AND financial_year = 'ALL'");
+        const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
+        
+        const result = await pool.query("SELECT MAX(CAST(REGEXP_REPLACE(payment_no, '^PMT', '', 'g') AS INTEGER)) as max_val FROM vendor_payments WHERE payment_no ~ '^PMT[0-9]+$'");
+        const maxVal = parseInt(result.rows[0]?.max_val) || 0;
+        
+        const nextCounter = Math.max(seqVal, maxVal) + 1;
+        res.json({ counter: nextCounter });
+    } catch (e) {
+        console.error('Error fetching PMT counter:', e);
+        res.json({ counter: 1 });
+    }
+});
 app.post('/api/vendor-payment-counter', async (req, res) => {
-    const db = await readDB(); db.vendor_payment_counter = parseInt(req.body.counter) || 1; await writeDB(db);
-    res.json({ success: true, counter: db.vendor_payment_counter });
+    const val = parseInt(req.body.counter) || 1;
+    const db = await readDB(); db.vendor_payment_counter = val; await writeDB(db);
+    res.json({ success: true, counter: val });
 });
 
 app.get('/api/settings/tag', async (req, res) => res.json((await readDB()).tagSettings || {}));
@@ -675,13 +853,285 @@ app.post('/api/settings/tag', async (req, res) => {
     res.json({ success: true });
 });
 
+// ───────── VOUCHERS API ─────────
+app.get('/api/voucher-counter', async (req, res) => {
+    try {
+        const pmtCount = await pool.query("SELECT COUNT(*) FROM vouchers WHERE voucher_type = 'Payment' AND status != 'DELETED'");
+        const recCount = await pool.query("SELECT COUNT(*) FROM vouchers WHERE voucher_type = 'Receipt' AND status != 'DELETED'");
+        const nextPaymentNum = (parseInt(pmtCount.rows[0]?.count || 0) + 1);
+        const nextReceiptNum = (parseInt(recCount.rows[0]?.count || 0) + 1);
+        res.json({
+            nextPaymentNo: `PAY-${String(nextPaymentNum).padStart(3, '0')}`,
+            nextReceiptNo: `REC-${String(nextReceiptNum).padStart(3, '0')}`
+        });
+    } catch (e) {
+        res.json({ nextPaymentNo: 'PAY-001', nextReceiptNo: 'REC-001' });
+    }
+});
+
+app.get('/api/vouchers', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, voucher_no as "voucherNo", voucher_type as "voucherType",
+            date, category, party_name as "partyName", payment_mode as "paymentMode",
+            reference_no as "referenceNo", amount, tax_rate as "taxRate",
+            amount_in_words as "amountInWords", narration, attachment, status,
+            created_at as "createdAt", updated_at as "updatedAt"
+            FROM vouchers
+            WHERE status != 'DELETED'
+            ORDER BY created_at DESC, date DESC
+        `);
+        const rows = result.rows.map(r => {
+            if (r.date) {
+                const d = new Date(r.date);
+                r.date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+            }
+            r.amount = parseFloat(r.amount) || 0;
+            return r;
+        });
+        res.json(rows);
+    } catch (e) {
+        console.error('Error fetching vouchers:', e);
+        try {
+            const db = await readDB();
+            res.json(db.vouchers || []);
+        } catch (err) {
+            res.json([]);
+        }
+    }
+});
+
+app.get('/api/vouchers/:id', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, voucher_no as "voucherNo", voucher_type as "voucherType",
+            date, category, party_name as "partyName", payment_mode as "paymentMode",
+            reference_no as "referenceNo", amount, tax_rate as "taxRate",
+            amount_in_words as "amountInWords", narration, attachment, status,
+            created_at as "createdAt", updated_at as "updatedAt"
+            FROM vouchers
+            WHERE (id = $1 OR voucher_no = $1) AND status != 'DELETED'
+        `, [req.params.id]);
+        if (result.rows.length > 0) {
+            const r = result.rows[0];
+            if (r.date) {
+                const d = new Date(r.date);
+                r.date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+            }
+            r.amount = parseFloat(r.amount) || 0;
+            return res.json(r);
+        }
+        res.status(404).json({ error: 'Voucher not found' });
+    } catch (e) {
+        sendError(res, e, 'Failed to fetch voucher');
+    }
+});
+
+app.post('/api/vouchers', async (req, res) => {
+    try {
+        const id = `vch_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const v = req.body;
+        
+        let dateVal = v.date;
+        if (typeof dateVal === 'string' && dateVal.includes('/')) {
+            const parts = dateVal.split('/');
+            if (parts.length === 3) {
+                dateVal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+        if (!dateVal) dateVal = new Date().toISOString().split('T')[0];
+
+        let voucherNo = v.voucherNo;
+        if (!voucherNo) {
+            const isPayment = (v.voucherType || 'Payment').toLowerCase() === 'payment';
+            const prefix = isPayment ? 'PAY' : 'REC';
+            const countRes = await pool.query("SELECT COUNT(*) FROM vouchers WHERE voucher_type = $1 AND status != 'DELETED'", [isPayment ? 'Payment' : 'Receipt']);
+            const nextSeq = parseInt(countRes.rows[0]?.count || 0) + 1;
+            voucherNo = `${prefix}-${String(nextSeq).padStart(3, '0')}`;
+        }
+
+        const insertQuery = `
+            INSERT INTO vouchers (
+                id, voucher_no, voucher_type, date, category, party_name,
+                payment_mode, reference_no, amount, tax_rate, amount_in_words,
+                narration, attachment, status, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'ACTIVE', NOW(), NOW()
+            ) RETURNING id, voucher_no as "voucherNo"
+        `;
+        await pool.query(insertQuery, [
+            id,
+            voucherNo,
+            v.voucherType || 'Payment',
+            dateVal,
+            v.category || 'General',
+            v.partyName || '',
+            v.paymentMode || 'Cash',
+            v.referenceNo || null,
+            parseFloat(v.amount) || 0,
+            parseFloat(v.taxRate) || 0,
+            v.amountInWords || '',
+            v.narration || '',
+            v.attachment || null
+        ]);
+
+        try {
+            const db = await readDB();
+            db.vouchers = db.vouchers || [];
+            db.vouchers.unshift({ ...v, id, voucherNo, date: v.date });
+            await writeDB(db);
+        } catch (err) {}
+
+        res.json({ success: true, id, voucherNo, message: 'Voucher created successfully' });
+    } catch (e) {
+        sendError(res, e, 'Failed to create voucher');
+    }
+});
+
+app.put('/api/vouchers/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const v = req.body;
+
+        let dateVal = v.date;
+        if (typeof dateVal === 'string' && dateVal.includes('/')) {
+            const parts = dateVal.split('/');
+            if (parts.length === 3) {
+                dateVal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+
+        const updateQuery = `
+            UPDATE vouchers SET
+                voucher_type = COALESCE($1, voucher_type),
+                date = COALESCE($2, date),
+                category = COALESCE($3, category),
+                party_name = COALESCE($4, party_name),
+                payment_mode = COALESCE($5, payment_mode),
+                reference_no = $6,
+                amount = COALESCE($7, amount),
+                tax_rate = COALESCE($8, tax_rate),
+                amount_in_words = COALESCE($9, amount_in_words),
+                narration = $10,
+                attachment = COALESCE($11, attachment),
+                updated_at = NOW()
+            WHERE id = $12
+        `;
+        await pool.query(updateQuery, [
+            v.voucherType,
+            dateVal,
+            v.category,
+            v.partyName,
+            v.paymentMode,
+            v.referenceNo || null,
+            parseFloat(v.amount) || 0,
+            parseFloat(v.taxRate) || 0,
+            v.amountInWords,
+            v.narration || '',
+            v.attachment || null,
+            id
+        ]);
+
+        try {
+            const db = await readDB();
+            db.vouchers = db.vouchers || [];
+            const idx = db.vouchers.findIndex(item => item.id === id);
+            if (idx !== -1) {
+                db.vouchers[idx] = { ...db.vouchers[idx], ...v, updatedAt: new Date().toISOString() };
+                await writeDB(db);
+            }
+        } catch (err) {}
+
+        res.json({ success: true, message: 'Voucher updated successfully' });
+    } catch (e) {
+        sendError(res, e, 'Failed to update voucher');
+    }
+});
+
+app.delete('/api/vouchers/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await pool.query("UPDATE vouchers SET status = 'DELETED', updated_at = NOW() WHERE id = $1", [id]);
+        
+        try {
+            const db = await readDB();
+            db.vouchers = (db.vouchers || []).filter(v => v.id !== id);
+            await writeDB(db);
+        } catch (err) {}
+
+        res.json({ success: true, message: 'Voucher deleted successfully' });
+    } catch (e) {
+        sendError(res, e, 'Failed to delete voucher');
+    }
+});
+
+// Expense / Income Categories API
+app.get('/api/expense-categories', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name, type FROM expense_categories ORDER BY name ASC');
+        if (result.rows.length === 0) {
+            const defaultExpenseCategories = [
+                { name: 'Shop Rent', type: 'Expense' },
+                { name: 'Staff Salary / Wages', type: 'Expense' },
+                { name: 'Electricity Bill', type: 'Expense' },
+                { name: 'Freight & Transportation', type: 'Expense' },
+                { name: 'Tea & Refreshments', type: 'Expense' },
+                { name: 'Repairs & Maintenance', type: 'Expense' },
+                { name: 'Printing & Stationery', type: 'Expense' },
+                { name: 'Loading / Unloading', type: 'Expense' },
+                { name: 'Telephone & Internet', type: 'Expense' },
+                { name: 'Miscellaneous Expense', type: 'Expense' },
+                { name: 'Scrap Sales', type: 'Income' },
+                { name: 'Interest Received', type: 'Income' },
+                { name: 'Rent Received', type: 'Income' },
+                { name: 'Commission Received', type: 'Income' },
+                { name: 'Miscellaneous Income', type: 'Income' }
+            ];
+            for (let c of defaultExpenseCategories) {
+                const catId = `cat_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+                await pool.query('INSERT INTO expense_categories (id, name, type) VALUES ($1, $2, $3)', [catId, c.name, c.type]);
+            }
+            const seeded = await pool.query('SELECT id, name, type FROM expense_categories ORDER BY name ASC');
+            return res.json(seeded.rows);
+        }
+        res.json(result.rows);
+    } catch (e) {
+        console.error(e);
+        res.json([
+            { id: '1', name: 'Shop Rent', type: 'Expense' },
+            { id: '2', name: 'Staff Salary / Wages', type: 'Expense' },
+            { id: '3', name: 'Electricity Bill', type: 'Expense' },
+            { id: '4', name: 'Freight & Transportation', type: 'Expense' },
+            { id: '5', name: 'Tea & Refreshments', type: 'Expense' },
+            { id: '6', name: 'Repairs & Maintenance', type: 'Expense' },
+            { id: '7', name: 'Printing & Stationery', type: 'Expense' },
+            { id: '8', name: 'Miscellaneous Expense', type: 'Expense' },
+            { id: '9', name: 'Scrap Sales', type: 'Income' },
+            { id: '10', name: 'Miscellaneous Income', type: 'Income' }
+        ]);
+    }
+});
+
+app.post('/api/expense-categories', async (req, res) => {
+    try {
+        const { name, type } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
+        const catId = `cat_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+        await pool.query('INSERT INTO expense_categories (id, name, type) VALUES ($1, $2, $3)', [catId, name.trim(), type || 'Expense']);
+        res.json({ success: true, id: catId, name: name.trim(), type: type || 'Expense' });
+    } catch (e) {
+        sendError(res, e, 'Failed to add category');
+    }
+});
+
 app.get('/api/payments', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT cr.id, cr.receipt_no as "arNo", cr.date, c.customer_name as "customerName", 
-            c.phone_number as "mobile", 
+            SELECT cr.id, cr.receipt_no as "arNo", cr.date, COALESCE(c.customer_name, 'Walk In Customer') as "customerName", 
+            COALESCE(c.phone_number, '') as "mobile", 
             COALESCE(c.bill_address, '') || ', ' || COALESCE(c.bill_city, '') as "address",
             cr.amount, cr.allocated_amount as "allocatedAmount", cr.advance_amount as "advanceAmount", 
+            COALESCE(cr.discount_amount, 0) as "discountAmount",
             cr.payment_mode as "paymentMode", cr.reference_no as "referenceNo", cr.reference_date as "referenceDate",
             cr.note, cr.status, cr.created_at as "createdAt",
             COALESCE(
@@ -690,7 +1140,8 @@ app.get('/api/payments', async (req, res) => {
                         'invoiceNo', si.invoice_no,
                         'date', si.date,
                         'amount', si.amount,
-                        'allocated', cra.allocated_amount
+                        'allocated', cra.allocated_amount,
+                        'discount', COALESCE(cra.discount_amount, 0)
                     )
                  ) FROM customer_receipt_allocations cra
                  JOIN sales_invoices si ON si.id = cra.invoice_id
@@ -698,7 +1149,7 @@ app.get('/api/payments', async (req, res) => {
                 '[]'::json
             ) as invoices
             FROM customer_receipts cr
-            JOIN customers c ON c.id = cr.customer_id
+            LEFT JOIN customers c ON c.id = cr.customer_id
             WHERE cr.status = 'ACTIVE'
         `);
         const dbReceipts = result.rows.map(r => {
@@ -721,7 +1172,7 @@ app.get('/api/payments', async (req, res) => {
                 mobile: r.mobile,
                 address: r.address,
                 amount: parseFloat(r.amount) || 0,
-                discount: 0,
+                discount: parseFloat(r.discountAmount) || 0,
                 invoices: r.invoices
             };
         });
@@ -748,6 +1199,7 @@ app.get('/api/vendor-payments', async (req, res) => {
             SELECT vp.id, vp.payment_no as "pmtNo", vp.date, v.vendor_name as "vendorName",
             vp.vendor_id as "vendorId",
             vp.amount as "paidAmount", vp.allocated_amount as "allocatedAmount", vp.advance_amount as "advanceAmount",
+            COALESCE(vp.discount_amount, 0) as "discountAmount",
             vp.payment_mode as "paymentMode", vp.reference_no as "referenceNo", vp.reference_date as "referenceDate",
             vp.note, vp.status, vp.created_at as "createdAt",
             COALESCE(
@@ -756,7 +1208,8 @@ app.get('/api/vendor-payments', async (req, res) => {
                         'piNo', pi.pi_no,
                         'date', pi.date,
                         'amount', pi.amount,
-                        'allocated', vpa.allocated_amount
+                        'allocated', vpa.allocated_amount,
+                        'discount', COALESCE(vpa.discount_amount, 0)
                     )
                  ) FROM vendor_payment_allocations vpa
                  JOIN purchase_invoices pi ON pi.id = vpa.purchase_invoice_id
@@ -787,7 +1240,7 @@ app.get('/api/vendor-payments', async (req, res) => {
                 vendorId: p.vendorId,
                 vendorName: p.vendorName,
                 paidAmount: parseFloat(p.paidAmount) || 0,
-                discount: 0,
+                discount: parseFloat(p.discountAmount) || 0,
                 invoices: p.invoices
             };
         });
@@ -1312,21 +1765,8 @@ app.post('/api/sales/create', async (req, res) => {
         }
 
         // 5. Parse Dates
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
-
-        let parsedDueDate = dueDate;
-        if (parsedDueDate && parsedDueDate.includes('/')) {
-            const parts = parsedDueDate.split('/');
-            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDueDate) {
-            parsedDueDate = null;
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedDueDate = parseDateForDB(dueDate);
 
         const sid = generateId();
 
@@ -1642,21 +2082,8 @@ app.post('/api/purchases/create', async (req, res) => {
         }
 
         // 5. Parse Dates
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
-
-        let parsedDueDate = dueDate;
-        if (parsedDueDate && parsedDueDate.includes('/')) {
-            const parts = parsedDueDate.split('/');
-            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDueDate) {
-            parsedDueDate = null;
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedDueDate = parseDateForDB(dueDate);
 
         const piId = generateId();
 
@@ -1909,13 +2336,7 @@ app.post('/api/sales-returns/create', async (req, res) => {
         const returnGrandTotal = Math.round(rawReturnTotal);
 
         // ── 11. Parse date & Prepare for Customer Allocation ───────────────────
-        let parsedReturnDate = date;
-        if (parsedReturnDate && parsedReturnDate.includes('/')) {
-            const parts = parsedReturnDate.split('/');
-            if (parts.length === 3) parsedReturnDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedReturnDate) {
-            parsedReturnDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedReturnDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
 
         // ── 12. Financial Allocation & Customer Financial Update ─────────────
         let receivableReduction = 0;
@@ -2276,13 +2697,7 @@ app.post('/api/purchase-returns/create', async (req, res) => {
         );
 
         // Parse date
-        let parsedReturnDate = date;
-        if (parsedReturnDate && parsedReturnDate.includes('/')) {
-            const parts = parsedReturnDate.split('/');
-            if (parts.length === 3) parsedReturnDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedReturnDate) {
-            parsedReturnDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedReturnDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
 
         // 13. Insert Purchase Return
         const returnId = generateId();
@@ -2342,9 +2757,10 @@ app.post('/api/receipts/create', async (req, res) => {
         const {
             customerId,
             amount: amountInput,
+            discount: discountInput,
             date,
-            referenceType,
-            paymentMode,
+            referenceType: reqRefType,
+            paymentMode: reqPayMode,
             referenceNo,
             referenceDate,
             note,
@@ -2357,82 +2773,115 @@ app.post('/api/receipts/create', async (req, res) => {
         if (isNaN(amount) || amount <= 0 || isNaN(Number(amountInput))) {
             throw new Error('Amount must be a valid number greater than 0');
         }
+        const discount = parseFloat(discountInput) || 0;
+        if (isNaN(discount) || discount < 0) {
+            throw new Error('Discount cannot be negative');
+        }
         if (!date) throw new Error('Date is required');
-        if (!['AGAINST_REFERENCE', 'ON_ACCOUNT', 'ADVANCE'].includes(referenceType)) {
-            throw new Error('Invalid reference type');
-        }
-        if (!['CASH', 'BANK', 'UPI', 'CARD'].includes(paymentMode)) {
-            throw new Error('Invalid payment mode');
-        }
+
+        const referenceType = reqRefType || 'DIRECT';
+        const paymentMode = reqPayMode || null;
 
         let allocatedAmount = 0;
-        let advanceAmount = amount;
+        let totalDiscount = 0;
         let allocationsToSave = [];
         let uniqueInvoiceIds = [];
 
-        // 2. Lock affected Sales Invoices in deterministic sorted order first (to match hierarchy)
-        if (referenceType === 'AGAINST_REFERENCE') {
-            if (!rawAllocations || !Array.isArray(rawAllocations) || rawAllocations.length === 0) {
-                throw new Error('Allocations are required for Against Reference');
+        // 2. Process Allocations
+        if (!rawAllocations || !Array.isArray(rawAllocations) || rawAllocations.length === 0) {
+            throw new Error('Allocations are required');
+        }
+
+        // Aggregate duplicate invoice allocations
+        const aggMap = new Map();
+        for (const alloc of rawAllocations) {
+            const invId = String(alloc.invoiceId);
+            const allocAmt = parseFloat(alloc.allocatedAmount) || 0;
+            const discAmt = parseFloat(alloc.discountAmount) || 0;
+
+            if (!invId) throw new Error('Invoice ID is required for allocation');
+            if (allocAmt < 0 || discAmt < 0 || (allocAmt + discAmt) <= 0) {
+                throw new Error(`Invalid allocation or discount for invoice: ${invId}`);
             }
 
-            // Aggregate duplicate invoice allocations
-            const aggMap = new Map();
-            for (const alloc of rawAllocations) {
-                const invId = String(alloc.invoiceId);
-                const allocAmt = parseFloat(alloc.allocatedAmount);
-                if (!invId) throw new Error('Invoice ID is required for allocation');
-                if (isNaN(allocAmt) || allocAmt <= 0 || isNaN(Number(alloc.allocatedAmount))) {
-                    throw new Error(`Invalid allocation amount (${alloc.allocatedAmount}) for invoice: ${invId}`);
-                }
-                aggMap.set(invId, (aggMap.get(invId) || 0) + allocAmt);
+            const existing = aggMap.get(invId) || { allocAmt: 0, discAmt: 0 };
+            existing.allocAmt += allocAmt;
+            existing.discAmt += discAmt;
+            aggMap.set(invId, existing);
+        }
+
+        const isWalkIn = (!customerId || String(customerId) === 'walk-in' || String(customerId).toLowerCase() === 'walk in customer');
+        let selectedCustomerName = 'walk in customer';
+        let customer = null;
+
+        if (!isWalkIn) {
+            // Pre-fetch selected customer name for validation
+            const custCheck = await client.query("SELECT id, customer_name, pending_to_receive FROM customers WHERE id = $1", [customerId]);
+            if (custCheck.rows.length === 0) {
+                throw new Error('Customer not found');
             }
+            customer = custCheck.rows[0];
+            selectedCustomerName = (customer.customer_name || '').toLowerCase().trim();
+        }
 
-            // Lock affected Sales Invoices in deterministic sorted order
-            uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
-            const invRes = await client.query(
-                "SELECT id, invoice_no, customer_id, amount, paid_amount, pending_to_receive, status FROM sales_invoices WHERE id = ANY($1) FOR UPDATE",
-                [uniqueInvoiceIds]
-            );
+        // Lock affected Sales Invoices in deterministic sorted order
+        uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
+        const invRes = await client.query(
+            "SELECT id, invoice_no, customer_id, customer_name, amount, paid_amount, pending_to_receive, status FROM sales_invoices WHERE id = ANY($1) FOR UPDATE",
+            [uniqueInvoiceIds]
+        );
 
-            const invMap = new Map(invRes.rows.map(row => [row.id, row]));
+        const invMap = new Map(invRes.rows.map(row => [row.id, row]));
 
-            // Validate invoice details and allocations
-            for (const [invId, reqAmt] of aggMap.entries()) {
-                const invoice = invMap.get(invId);
-                if (!invoice) {
-                    throw new Error(`Sales Invoice with ID "${invId}" not found`);
+        // Validate invoice details and allocations
+        for (const [invId, { allocAmt, discAmt }] of aggMap.entries()) {
+            const invoice = invMap.get(invId);
+            if (!invoice) {
+                throw new Error(`Sales Invoice with ID "${invId}" not found`);
+            }
+            if (invoice.status === 'CANCELLED') {
+                throw new Error('Cannot create transaction against a cancelled Sales Invoice.');
+            }
+            const invCustId = String(invoice.customer_id || '');
+            const invCustName = (invoice.customer_name || '').toLowerCase().trim();
+            if (isWalkIn) {
+                if (invCustId && invCustId !== 'walk-in' && invCustName !== 'walk in customer') {
+                    throw new Error(`Invoice ${invoice.invoice_no} does not belong to Walk In Customer`);
                 }
-                if (invoice.status === 'CANCELLED') {
-                    throw new Error('Cannot create transaction against a cancelled Sales Invoice.');
-                }
-                if (String(invoice.customer_id) !== String(customerId)) {
+            } else {
+                if (invCustId !== String(customerId) && invCustName !== selectedCustomerName) {
                     throw new Error(`Invoice ${invoice.invoice_no} does not belong to the selected customer`);
                 }
-
-                const currentPaid = parseFloat(invoice.paid_amount) || 0;
-                const currentTotal = parseFloat(invoice.amount) || 0;
-                const remaining = Math.max(0, currentTotal - currentPaid);
-
-                if (reqAmt > remaining) {
-                    throw new Error(`Allocation of ${reqAmt} exceeds remaining outstanding balance of ${remaining} on invoice ${invoice.invoice_no}`);
-                }
-
-                allocatedAmount += reqAmt;
-                allocationsToSave.push({
-                    invoiceId: invId,
-                    allocatedAmount: reqAmt,
-                    newPaid: currentPaid + reqAmt,
-                    newPending: remaining - reqAmt
-                });
             }
 
-            if (allocatedAmount > amount) {
-                throw new Error(`Sum of allocations (${allocatedAmount}) cannot exceed receipt amount (${amount})`);
+            const currentPaid = parseFloat(invoice.paid_amount) || 0;
+            const currentTotal = parseFloat(invoice.amount) || 0;
+            const remaining = Math.max(0, currentTotal - currentPaid);
+
+            if ((allocAmt + discAmt) > remaining + 0.0001) {
+                throw new Error(`Allocation + discount (${(allocAmt + discAmt).toFixed(2)}) exceeds remaining outstanding balance of ${remaining.toFixed(2)} on invoice ${invoice.invoice_no}`);
             }
 
-            advanceAmount = amount - allocatedAmount;
+            allocatedAmount += allocAmt;
+            totalDiscount += discAmt;
+
+            allocationsToSave.push({
+                invoiceId: invId,
+                allocatedAmount: allocAmt,
+                discountAmount: discAmt,
+                newPaid: currentPaid + allocAmt + discAmt,
+                newPending: Math.max(0, remaining - (allocAmt + discAmt))
+            });
         }
+
+        // Invariant checks:
+        if (Math.abs(allocatedAmount - amount) > 0.01) {
+            throw new Error(`Sum of allocations (${allocatedAmount.toFixed(2)}) must equal received amount (${amount.toFixed(2)})`);
+        }
+        if (discount > 0 && Math.abs(totalDiscount - discount) > 0.01) {
+            throw new Error(`Sum of allocated discounts (${totalDiscount.toFixed(2)}) must equal discount amount (${discount.toFixed(2)})`);
+        }
+        const finalDiscount = discount > 0 ? discount : totalDiscount;
 
         // 3. Generate Receipt number atomically
         let seqRes = await client.query(
@@ -2453,41 +2902,42 @@ app.post('/api/receipts/create', async (req, res) => {
             [currentSeqNum + 1]
         );
 
-        // 4. Lock customer row LAST (complying with SI -> DS -> CU hierarchy)
-        const custRes = await client.query(
-            "SELECT id, customer_name, pending_to_receive, customer_advance_balance FROM customers WHERE id = $1 FOR UPDATE",
-            [customerId]
-        );
-        if (custRes.rows.length === 0) {
-            throw new Error('Customer not found');
-        }
-        const customer = custRes.rows[0];
-
-        // 5. Validate allocations + advance = amount
-        if (Math.abs((allocatedAmount + advanceAmount) - amount) > 0.0001) {
-            throw new Error('Allocation total and advance amount must equal the receipt amount');
+        // 4. Lock customer row LAST if registered customer
+        if (!isWalkIn) {
+            const custRes = await client.query(
+                "SELECT id, customer_name, pending_to_receive FROM customers WHERE id = $1 FOR UPDATE",
+                [customerId]
+            );
+            if (custRes.rows.length === 0) {
+                throw new Error('Customer not found');
+            }
+            customer = custRes.rows[0];
         }
 
         const receiptId = generateId();
 
-        // 6. Insert receipt
+        // 5. Insert receipt (advance_amount = 0)
+        const parsedReceiptDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedRefDate = parseDateForDB(referenceDate);
+        const actualCustomerId = isWalkIn ? null : customerId;
+
         await client.query(`
             INSERT INTO customer_receipts (
                 id, receipt_no, date, customer_id, reference_type, amount, 
-                allocated_amount, advance_amount, payment_mode, reference_no, reference_date, note, status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE')
+                allocated_amount, advance_amount, discount_amount, payment_mode, reference_no, reference_date, note, status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, 'ACTIVE')
         `, [
-            receiptId, receiptNo, date, customerId, referenceType, amount,
-            allocatedAmount, advanceAmount, paymentMode, referenceNo || null,
-            referenceDate ? referenceDate : null, note || ''
+            receiptId, receiptNo, parsedReceiptDate, actualCustomerId, referenceType, amount,
+            allocatedAmount, finalDiscount, paymentMode, referenceNo || null,
+            parsedRefDate, note || ''
         ]);
 
-        // 7. Insert allocation rows and update Sales Invoices
+        // 6. Insert allocation rows and update Sales Invoices
         for (const alloc of allocationsToSave) {
             await client.query(`
-                INSERT INTO customer_receipt_allocations (id, receipt_id, invoice_id, allocated_amount)
-                VALUES ($1, $2, $3, $4)
-            `, [generateId(), receiptId, alloc.invoiceId, alloc.allocatedAmount]);
+                INSERT INTO customer_receipt_allocations (id, receipt_id, invoice_id, allocated_amount, discount_amount)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [generateId(), receiptId, alloc.invoiceId, alloc.allocatedAmount, alloc.discountAmount]);
 
             await client.query(`
                 UPDATE sales_invoices 
@@ -2496,24 +2946,21 @@ app.post('/api/receipts/create', async (req, res) => {
             `, [alloc.newPaid, alloc.newPending, alloc.invoiceId]);
         }
 
-        // 8. Update Customer Balances
-        const currentPending = parseFloat(customer.pending_to_receive) || 0;
-        const currentAdvance = parseFloat(customer.customer_advance_balance) || 0;
+        // 7. Update Customer Balances if registered customer
+        if (!isWalkIn && customer) {
+            const currentPending = parseFloat(customer.pending_to_receive) || 0;
+            const totalSettled = allocatedAmount + finalDiscount;
+            const newPending = Math.max(0, currentPending - totalSettled);
 
-        const newPending = currentPending - allocatedAmount;
-        if (newPending < 0) {
-            throw new Error(`Inconsistent data: Customer outstanding balance would become negative (${newPending})`);
+            await client.query(`
+                UPDATE customers
+                SET pending_to_receive = $1
+                WHERE id = $2
+            `, [newPending, customerId]);
         }
-        const newAdvance = currentAdvance + advanceAmount;
-
-        await client.query(`
-            UPDATE customers
-            SET pending_to_receive = $1, customer_advance_balance = $2
-            WHERE id = $3
-        `, [newPending, newAdvance, customerId]);
 
         await client.query('COMMIT');
-        res.json({ success: true, receiptNo, receiptId, allocatedAmount, advanceAmount });
+        res.json({ success: true, receiptNo, receiptId, allocatedAmount, discountAmount: finalDiscount });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Customer Receipt creation failed:', err);
@@ -2535,9 +2982,10 @@ app.post('/api/vendor-payments/create', async (req, res) => {
         const {
             vendorId,
             amount: amountInput,
+            discount: discountInput,
             date,
-            referenceType,
-            paymentMode,
+            referenceType: reqRefType,
+            paymentMode: reqPayMode,
             referenceNo,
             referenceDate,
             note,
@@ -2550,80 +2998,93 @@ app.post('/api/vendor-payments/create', async (req, res) => {
         if (isNaN(amount) || amount <= 0 || isNaN(Number(amountInput))) {
             throw new Error('Amount must be a valid number greater than 0');
         }
+        const discount = parseFloat(discountInput) || 0;
+        if (isNaN(discount) || discount < 0) {
+            throw new Error('Discount cannot be negative');
+        }
         if (!date) throw new Error('Date is required');
-        if (!['AGAINST_REFERENCE', 'ON_ACCOUNT', 'ADVANCE'].includes(referenceType)) {
-            throw new Error('Invalid reference type');
-        }
-        if (!['CASH', 'BANK', 'UPI', 'CARD'].includes(paymentMode)) {
-            throw new Error('Invalid payment mode');
-        }
+
+        const referenceType = reqRefType || 'DIRECT';
+        const paymentMode = reqPayMode || null;
 
         let allocatedAmount = 0;
-        let advanceAmount = amount;
+        let totalDiscount = 0;
         let allocationsToSave = [];
+        let uniqueInvoiceIds = [];
 
-        // 2. Lock affected Purchase Invoices first if AGAINST_REFERENCE to prevent deadlocks
-        if (referenceType === 'AGAINST_REFERENCE') {
-            if (!rawAllocations || !Array.isArray(rawAllocations) || rawAllocations.length === 0) {
-                throw new Error('Allocations are required for Against Reference');
-            }
-
-            // Aggregate duplicate invoice allocations
-            const aggMap = new Map();
-            for (const alloc of rawAllocations) {
-                const invId = String(alloc.invoiceId);
-                const allocAmt = parseFloat(alloc.allocatedAmount);
-                if (!invId) throw new Error('Invoice ID is required for allocation');
-                if (isNaN(allocAmt) || allocAmt <= 0 || isNaN(Number(alloc.allocatedAmount))) {
-                    throw new Error(`Invalid allocation amount (${alloc.allocatedAmount}) for invoice: ${invId}`);
-                }
-                aggMap.set(invId, (aggMap.get(invId) || 0) + allocAmt);
-            }
-
-            // Lock affected Purchase Invoices in deterministic sorted order
-            const uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
-            const invRes = await client.query(
-                "SELECT id, pi_no, vendor_id, amount, paid_amount, pending_to_pay, status FROM purchase_invoices WHERE id = ANY($1) FOR UPDATE",
-                [uniqueInvoiceIds]
-            );
-
-            const invMap = new Map(invRes.rows.map(row => [row.id, row]));
-
-            // Validate invoice details and allocations
-            for (const [invId, reqAmt] of aggMap.entries()) {
-                const invoice = invMap.get(invId);
-                if (!invoice) {
-                    throw new Error(`Purchase Invoice with ID "${invId}" not found`);
-                }
-                if (invoice.status === 'CANCELLED') {
-                    throw new Error('Cannot create transaction against a cancelled Purchase Invoice.');
-                }
-                if (String(invoice.vendor_id) !== String(vendorId)) {
-                    throw new Error(`Invoice ${invoice.pi_no} does not belong to the selected vendor`);
-                }
-
-                const currentPaid = parseFloat(invoice.paid_amount) || 0;
-                const currentPending = parseFloat(invoice.pending_to_pay) || 0;
-
-                if (reqAmt > currentPending) {
-                    throw new Error(`Allocation of ${reqAmt} exceeds remaining outstanding balance of ${currentPending} on invoice ${invoice.pi_no}`);
-                }
-
-                allocatedAmount += reqAmt;
-                allocationsToSave.push({
-                    invoiceId: invId,
-                    allocatedAmount: reqAmt,
-                    newPaid: currentPaid + reqAmt,
-                    newPending: currentPending - reqAmt
-                });
-            }
-
-            if (allocatedAmount > amount) {
-                throw new Error(`Sum of allocations (${allocatedAmount}) cannot exceed payment amount (${amount})`);
-            }
-
-            advanceAmount = amount - allocatedAmount;
+        // 2. Process Allocations
+        if (!rawAllocations || !Array.isArray(rawAllocations) || rawAllocations.length === 0) {
+            throw new Error('Allocations are required');
         }
+
+        // Aggregate duplicate invoice allocations
+        const aggMap = new Map();
+        for (const alloc of rawAllocations) {
+            const invId = String(alloc.invoiceId);
+            const allocAmt = parseFloat(alloc.allocatedAmount) || 0;
+            const discAmt = parseFloat(alloc.discountAmount) || 0;
+
+            if (!invId) throw new Error('Invoice ID is required for allocation');
+            if (allocAmt < 0 || discAmt < 0 || (allocAmt + discAmt) <= 0) {
+                throw new Error(`Invalid allocation or discount for invoice: ${invId}`);
+            }
+
+            const existing = aggMap.get(invId) || { allocAmt: 0, discAmt: 0 };
+            existing.allocAmt += allocAmt;
+            existing.discAmt += discAmt;
+            aggMap.set(invId, existing);
+        }
+
+        // Lock affected Purchase Invoices in deterministic sorted order
+        uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
+        const invRes = await client.query(
+            "SELECT id, pi_no, vendor_id, amount, paid_amount, pending_to_pay, status FROM purchase_invoices WHERE id = ANY($1) FOR UPDATE",
+            [uniqueInvoiceIds]
+        );
+
+        const invMap = new Map(invRes.rows.map(row => [row.id, row]));
+
+        // Validate invoice details and allocations
+        for (const [invId, { allocAmt, discAmt }] of aggMap.entries()) {
+            const invoice = invMap.get(invId);
+            if (!invoice) {
+                throw new Error(`Purchase Invoice with ID "${invId}" not found`);
+            }
+            if (invoice.status === 'CANCELLED') {
+                throw new Error('Cannot create transaction against a cancelled Purchase Invoice.');
+            }
+            if (String(invoice.vendor_id) !== String(vendorId)) {
+                throw new Error(`Invoice ${invoice.pi_no} does not belong to the selected vendor`);
+            }
+
+            const currentPaid = parseFloat(invoice.paid_amount) || 0;
+            const currentTotal = parseFloat(invoice.amount) || 0;
+            const remaining = Math.max(0, currentTotal - currentPaid);
+
+            if ((allocAmt + discAmt) > remaining + 0.0001) {
+                throw new Error(`Allocation + discount (${(allocAmt + discAmt).toFixed(2)}) exceeds remaining outstanding balance of ${remaining.toFixed(2)} on invoice ${invoice.pi_no}`);
+            }
+
+            allocatedAmount += allocAmt;
+            totalDiscount += discAmt;
+
+            allocationsToSave.push({
+                invoiceId: invId,
+                allocatedAmount: allocAmt,
+                discountAmount: discAmt,
+                newPaid: currentPaid + allocAmt + discAmt,
+                newPending: Math.max(0, remaining - (allocAmt + discAmt))
+            });
+        }
+
+        // Invariant checks:
+        if (Math.abs(allocatedAmount - amount) > 0.01) {
+            throw new Error(`Sum of allocations (${allocatedAmount.toFixed(2)}) must equal paid amount (${amount.toFixed(2)})`);
+        }
+        if (discount > 0 && Math.abs(totalDiscount - discount) > 0.01) {
+            throw new Error(`Sum of allocated discounts (${totalDiscount.toFixed(2)}) must equal discount amount (${discount.toFixed(2)})`);
+        }
+        const finalDiscount = discount > 0 ? discount : totalDiscount;
 
         // 3. Lock/generate sequence
         let seqRes = await client.query(
@@ -2654,31 +3115,28 @@ app.post('/api/vendor-payments/create', async (req, res) => {
         }
         const vendor = vendorRes.rows[0];
 
-        // 5. Validate allocations + advance = amount
-        if (Math.abs((allocatedAmount + advanceAmount) - amount) > 0.0001) {
-            throw new Error('Allocation total and advance amount must equal the payment amount');
-        }
-
         const paymentId = generateId();
 
-        // 6. Insert vendor payment
+        // 5. Insert vendor payment
+        const parsedPaymentDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedRefDate = parseDateForDB(referenceDate);
         await client.query(`
             INSERT INTO vendor_payments (
                 id, payment_no, date, vendor_id, reference_type, amount, 
-                allocated_amount, advance_amount, payment_mode, reference_no, reference_date, note, status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE')
+                allocated_amount, advance_amount, discount_amount, payment_mode, reference_no, reference_date, note, status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, 'ACTIVE')
         `, [
-            paymentId, paymentNo, date, vendorId, referenceType, amount,
-            allocatedAmount, advanceAmount, paymentMode, referenceNo || null,
-            referenceDate ? referenceDate : null, note || ''
+            paymentId, paymentNo, parsedPaymentDate, vendorId, referenceType, amount,
+            allocatedAmount, finalDiscount, paymentMode, referenceNo || null,
+            parsedRefDate, note || ''
         ]);
 
-        // 7. Insert allocation rows and update Purchase Invoices
+        // 6. Insert allocation rows and update Purchase Invoices
         for (const alloc of allocationsToSave) {
             await client.query(`
-                INSERT INTO vendor_payment_allocations (id, payment_id, purchase_invoice_id, allocated_amount)
-                VALUES ($1, $2, $3, $4)
-            `, [generateId(), paymentId, alloc.invoiceId, alloc.allocatedAmount]);
+                INSERT INTO vendor_payment_allocations (id, payment_id, purchase_invoice_id, allocated_amount, discount_amount)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [generateId(), paymentId, alloc.invoiceId, alloc.allocatedAmount, alloc.discountAmount]);
 
             await client.query(`
                 UPDATE purchase_invoices 
@@ -2687,24 +3145,19 @@ app.post('/api/vendor-payments/create', async (req, res) => {
             `, [alloc.newPaid, alloc.newPending, alloc.invoiceId]);
         }
 
-        // 8. Update Vendor Balances
+        // 7. Update Vendor Balances
         const currentPending = parseFloat(vendor.pending_to_pay) || 0;
-        const currentAdvance = parseFloat(vendor.vendor_advance_balance) || 0;
-
-        const newPending = currentPending - allocatedAmount;
-        if (newPending < 0) {
-            throw new Error(`Inconsistent data: Vendor outstanding balance would become negative (${newPending})`);
-        }
-        const newAdvance = currentAdvance + advanceAmount;
+        const totalSettled = allocatedAmount + finalDiscount;
+        const newPending = Math.max(0, currentPending - totalSettled);
 
         await client.query(`
             UPDATE vendors
-            SET pending_to_pay = $1, vendor_advance_balance = $2
-            WHERE id = $3
-        `, [newPending, newAdvance, vendorId]);
+            SET pending_to_pay = $1
+            WHERE id = $2
+        `, [newPending, vendorId]);
 
         await client.query('COMMIT');
-        res.json({ success: true, paymentNo, paymentId, allocatedAmount, advanceAmount });
+        res.json({ success: true, paymentNo, paymentId, allocatedAmount, discountAmount: finalDiscount });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Vendor Payment creation failed:', err);
@@ -2817,11 +3270,10 @@ app.post('/api/ai/extract-invoice', (req, res, next) => {
         // Robust Fallback Array: Try these models in order if one fails (404, 503, etc.)
         const modelsToTry = [
             process.env.GEMINI_MODEL,
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-flash-latest",
-            "gemini-3.1-pro-preview"
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-2.0-flash"
         ].filter(Boolean); // removes undefined if GEMINI_MODEL isn't set
 
         const prompt = `You are an expert accounting assistant. Extract the structured invoice data from the provided image or PDF.
@@ -2908,12 +3360,12 @@ app.post('/api/receipts/:id/cancel', async (req, res) => {
 
         // Fetch allocations to get the sales invoices affected
         const allocRes = await client.query(
-            "SELECT invoice_id, allocated_amount FROM customer_receipt_allocations WHERE receipt_id = $1",
+            "SELECT invoice_id, allocated_amount, COALESCE(discount_amount, 0) as discount_amount FROM customer_receipt_allocations WHERE receipt_id = $1",
             [receiptId]
         );
 
         let uniqueInvoiceIds = [];
-        if (receipt.reference_type === 'AGAINST_REFERENCE' && allocRes.rows.length > 0) {
+        if (allocRes.rows.length > 0) {
             uniqueInvoiceIds = [...new Set(allocRes.rows.map(a => String(a.invoice_id)))].sort();
         }
 
@@ -2937,42 +3389,45 @@ app.post('/api/receipts/:id/cancel', async (req, res) => {
         }
         const customer = custRes.rows[0];
 
-        const receiptAllocatedAmt = parseFloat(receipt.allocated_amount) || 0;
         const receiptAdvanceAmt = parseFloat(receipt.advance_amount) || 0;
 
-        // Invariant check: customer advance balance must be sufficient to revert
+        // Invariant check: customer advance balance must be sufficient to revert if advance was granted
         const currentCustAdvance = parseFloat(customer.customer_advance_balance) || 0;
-        if (currentCustAdvance < receiptAdvanceAmt) {
+        if (receiptAdvanceAmt > 0 && currentCustAdvance < receiptAdvanceAmt) {
             throw new Error(`Insufficient customer advance balance. Available: ${currentCustAdvance}, Required: ${receiptAdvanceAmt}`);
         }
 
         // 4. Perform reversals
-        // Revert allocations
+        // Revert allocations and discounts
         for (const alloc of allocRes.rows) {
             const inv = invMap.get(alloc.invoice_id);
             if (!inv) {
                 throw new Error(`Sales Invoice with ID "${alloc.invoice_id}" not found`);
             }
             const allocatedVal = parseFloat(alloc.allocated_amount) || 0;
+            const discountVal = parseFloat(alloc.discount_amount) || 0;
+            const totalReversal = allocatedVal + discountVal;
             
             // Revert Invoice balances
             await client.query(
                 "UPDATE sales_invoices SET paid_amount = COALESCE(paid_amount, 0) - $1, pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2",
-                [allocatedVal, inv.id]
+                [totalReversal, inv.id]
             );
             
             // Revert Customer outstanding receivable
             await client.query(
                 "UPDATE customers SET pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2",
-                [allocatedVal, customer.id]
+                [totalReversal, customer.id]
             );
         }
 
-        // Revert Customer Advance Balance
-        await client.query(
-            "UPDATE customers SET customer_advance_balance = COALESCE(customer_advance_balance, 0) - $1 WHERE id = $2",
-            [receiptAdvanceAmt, customer.id]
-        );
+        // Revert Customer Advance Balance if applicable
+        if (receiptAdvanceAmt > 0) {
+            await client.query(
+                "UPDATE customers SET customer_advance_balance = COALESCE(customer_advance_balance, 0) - $1 WHERE id = $2",
+                [receiptAdvanceAmt, customer.id]
+            );
+        }
 
         // Update Receipt Status
         await client.query(
@@ -3040,12 +3495,12 @@ app.post('/api/vendor-payments/:id/cancel', async (req, res) => {
 
         // Fetch allocations to get the purchase invoices affected
         const allocRes = await client.query(
-            "SELECT purchase_invoice_id, allocated_amount FROM vendor_payment_allocations WHERE payment_id = $1",
+            "SELECT purchase_invoice_id, allocated_amount, COALESCE(discount_amount, 0) as discount_amount FROM vendor_payment_allocations WHERE payment_id = $1",
             [paymentId]
         );
 
         let uniqueInvoiceIds = [];
-        if (payment.reference_type === 'AGAINST_REFERENCE' && allocRes.rows.length > 0) {
+        if (allocRes.rows.length > 0) {
             uniqueInvoiceIds = [...new Set(allocRes.rows.map(a => String(a.purchase_invoice_id)))].sort();
         }
 
@@ -3069,42 +3524,29 @@ app.post('/api/vendor-payments/:id/cancel', async (req, res) => {
         }
         const vendor = vendorRes.rows[0];
 
-        const paymentAllocatedAmt = parseFloat(payment.allocated_amount) || 0;
-        const paymentAdvanceAmt = parseFloat(payment.advance_amount) || 0;
-
-        // Invariant check: vendor advance balance must be sufficient to revert
-        const currentVendorAdvance = parseFloat(vendor.vendor_advance_balance) || 0;
-        if (currentVendorAdvance < paymentAdvanceAmt) {
-            throw new Error(`Insufficient vendor advance balance. Available: ${currentVendorAdvance}, Required: ${paymentAdvanceAmt}`);
-        }
-
         // 4. Perform reversals
-        // Revert allocations
+        // Revert allocations and discounts
         for (const alloc of allocRes.rows) {
             const inv = invMap.get(alloc.purchase_invoice_id);
             if (!inv) {
                 throw new Error(`Purchase Invoice with ID "${alloc.purchase_invoice_id}" not found`);
             }
             const allocatedVal = parseFloat(alloc.allocated_amount) || 0;
+            const discountVal = parseFloat(alloc.discount_amount) || 0;
+            const totalReversal = allocatedVal + discountVal;
             
             // Revert Invoice balances
             await client.query(
                 "UPDATE purchase_invoices SET paid_amount = COALESCE(paid_amount, 0) - $1, pending_to_pay = COALESCE(pending_to_pay, 0) + $1 WHERE id = $2",
-                [allocatedVal, inv.id]
+                [totalReversal, inv.id]
             );
             
             // Revert Vendor outstanding payable
             await client.query(
                 "UPDATE vendors SET pending_to_pay = COALESCE(pending_to_pay, 0) + $1 WHERE id = $2",
-                [allocatedVal, vendor.id]
+                [totalReversal, vendor.id]
             );
         }
-
-        // Revert Vendor Advance Balance
-        await client.query(
-            "UPDATE vendors SET vendor_advance_balance = COALESCE(vendor_advance_balance, 0) - $1 WHERE id = $2",
-            [paymentAdvanceAmt, vendor.id]
-        );
 
         // Update Payment Status
         await client.query(
@@ -3209,13 +3651,7 @@ app.put('/api/sales-returns/:id', async (req, res) => {
         }
 
         // Parse Dates
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
 
         // 3. Delta Calculation (Items)
         const oldItems = typeof oldRet.items === 'string' ? JSON.parse(oldRet.items) : oldRet.items;
@@ -3352,13 +3788,7 @@ app.put('/api/purchase-returns/:id', async (req, res) => {
         if (grandTotal < 0 || refundAmount < 0 || storeCredit < 0) throw new Error('Amounts cannot be negative');
         if (Math.abs(grandTotal - (refundAmount + storeCredit)) > 0.01) throw new Error('Refund + Store Credit must equal Grand Total');
 
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
 
         const oldItems = typeof oldRet.items === 'string' ? JSON.parse(oldRet.items) : oldRet.items;
         const itemDeltas = new Map(); 
@@ -4080,63 +4510,54 @@ app.put('/api/sales/:id', async (req, res) => {
         const netUnpaid = Math.max(0, grandTotal - receivedAmount);
 
         // Parse Dates
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parsedDate.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedDueDate = parseDateForDB(dueDate);
 
-        let parsedDueDate = dueDate;
-        if (parsedDueDate && parsedDueDate.includes('/')) {
-            const parts = parsedDueDate.split('/');
-            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDueDate) {
-            parsedDueDate = null;
-        }
-
-        // 3. Delta Calculation (Items using primary key ID)
-        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : oldInv.items;
+        // 3. Delta Calculation (Items using primary key ID or Code)
+        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : (oldInv.items || []);
         
-        const itemDeltas = new Map(); // key: item id, value: qty delta (new - old)
+        const itemDeltas = new Map(); // key: item code or id, value: qty delta (new - old)
+        const getItemKey = (it) => String(it.code || it.id || it.item_id || it.item?.code || it.item?.id || '');
 
         for (const oldIt of oldItems) {
-            const itemId = String(oldIt.id || oldIt.item_id);
+            const itemKey = getItemKey(oldIt);
             const qty = parseFloat(oldIt.qty) || 0;
-            if(itemId !== "undefined") {
-                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            if (itemKey && itemKey !== 'undefined') {
+                itemDeltas.set(itemKey, (itemDeltas.get(itemKey) || 0) - qty);
             }
         }
 
         for (const newIt of items) {
-            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const itemKey = getItemKey(newIt);
             const qty = parseFloat(newIt.qty) || 0;
-            if(itemId !== "undefined") {
-                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            if (itemKey && itemKey !== 'undefined') {
+                itemDeltas.set(itemKey, (itemDeltas.get(itemKey) || 0) + qty);
             }
         }
 
         // Clean up 0 deltas
-        for (const [itemId, delta] of itemDeltas.entries()) {
-            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        for (const [itemKey, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemKey);
         }
 
         // 4. Stock Validation
-        const itemIds = Array.from(itemDeltas.keys()).sort();
-        if (itemIds.length > 0) {
+        const itemKeys = Array.from(itemDeltas.keys()).sort();
+        if (itemKeys.length > 0) {
             const dbItemsRes = await client.query(
-                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
-                [itemIds]
+                `SELECT id, code, name, stock FROM items WHERE code = ANY($1::text[]) OR id = ANY($1::text[]) ORDER BY code ASC FOR UPDATE`,
+                [itemKeys]
             );
 
             const dbItemsMap = new Map();
-            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+            dbItemsRes.rows.forEach(r => {
+                dbItemsMap.set(String(r.code), r);
+                dbItemsMap.set(String(r.id), r);
+            });
 
-            for (const [itemId, deltaQty] of itemDeltas.entries()) {
-                const dbItem = dbItemsMap.get(itemId);
+            for (const [itemKey, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemKey);
                 if (!dbItem) {
-                    throw new Error(`Item ID "${itemId}" not found in inventory`);
+                    throw new Error(`Item "${itemKey}" not found in inventory`);
                 }
                 const currentStock = parseFloat(dbItem.stock) || 0;
                 // For sales, deltaQty > 0 means we need to take MORE from stock.
@@ -4146,10 +4567,11 @@ app.put('/api/sales/:id', async (req, res) => {
             }
 
             // Apply Stock Deltas
-            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+            for (const [itemKey, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemKey);
                 await client.query(
                     `UPDATE items SET stock = stock - $1 WHERE id = $2`,
-                    [deltaQty, itemId]
+                    [deltaQty, dbItem.id]
                 );
             }
         }
@@ -4264,15 +4686,8 @@ app.patch('/api/sales/:id', async (req, res) => {
             values.push(refNo || '');
         }
         if (dueDate !== undefined) {
-            let parsedDueDate = dueDate;
-            if (parsedDueDate && parsedDueDate.includes('/')) {
-                const parts = parsedDueDate.split('/');
-                if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            } else if (!parsedDueDate) {
-                parsedDueDate = null;
-            }
             updates.push(`due_date = $${idx++}`);
-            values.push(parsedDueDate);
+            values.push(parseDateForDB(dueDate));
         }
         if (paymentTerms !== undefined) {
             updates.push(`payment_terms = $${idx++}`);
@@ -4403,63 +4818,54 @@ app.put('/api/purchases/:id', async (req, res) => {
         const netUnpaid = Math.max(0, grandTotal - paidAmount);
 
         // Parse Dates
-        let parsedDate = date;
-        if (parsedDate && parsedDate.includes('/')) {
-            const parts = parsedDate.split('/');
-            if (parts.length === 3) parsedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDate) {
-            parsedDate = new Date().toISOString().split('T')[0];
-        }
+        const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
+        const parsedDueDate = parseDateForDB(dueDate);
 
-        let parsedDueDate = dueDate;
-        if (parsedDueDate && parsedDueDate.includes('/')) {
-            const parts = parsedDueDate.split('/');
-            if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else if (!parsedDueDate) {
-            parsedDueDate = null;
-        }
-
-        // 3. Delta Calculation (Items using primary key ID)
-        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : oldInv.items;
+        // 3. Delta Calculation (Items using primary key ID or Code)
+        const oldItems = typeof oldInv.items === 'string' ? JSON.parse(oldInv.items) : (oldInv.items || []);
         
         const itemDeltas = new Map(); 
+        const getItemKey = (it) => String(it.code || it.id || it.item_id || it.item?.code || it.item?.id || '');
 
         for (const oldIt of oldItems) {
-            const itemId = String(oldIt.id || oldIt.item_id);
+            const itemKey = getItemKey(oldIt);
             const qty = parseFloat(oldIt.qty) || 0;
-            if(itemId !== "undefined") {
-                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) - qty);
+            if (itemKey && itemKey !== 'undefined') {
+                itemDeltas.set(itemKey, (itemDeltas.get(itemKey) || 0) - qty);
             }
         }
 
         for (const newIt of items) {
-            const itemId = String(newIt.id || newIt.item_id || newIt.item?.id);
+            const itemKey = getItemKey(newIt);
             const qty = parseFloat(newIt.qty) || 0;
-            if(itemId !== "undefined") {
-                itemDeltas.set(itemId, (itemDeltas.get(itemId) || 0) + qty);
+            if (itemKey && itemKey !== 'undefined') {
+                itemDeltas.set(itemKey, (itemDeltas.get(itemKey) || 0) + qty);
             }
         }
 
         // Clean up 0 deltas
-        for (const [itemId, delta] of itemDeltas.entries()) {
-            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemId);
+        for (const [itemKey, delta] of itemDeltas.entries()) {
+            if (Math.abs(delta) < 0.0001) itemDeltas.delete(itemKey);
         }
 
         // 4. Stock Validation
-        const itemIds = Array.from(itemDeltas.keys()).sort();
-        if (itemIds.length > 0) {
+        const itemKeys = Array.from(itemDeltas.keys()).sort();
+        if (itemKeys.length > 0) {
             const dbItemsRes = await client.query(
-                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
-                [itemIds]
+                `SELECT id, code, name, stock FROM items WHERE code = ANY($1::text[]) OR id = ANY($1::text[]) ORDER BY code ASC FOR UPDATE`,
+                [itemKeys]
             );
 
             const dbItemsMap = new Map();
-            dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
+            dbItemsRes.rows.forEach(r => {
+                dbItemsMap.set(String(r.code), r);
+                dbItemsMap.set(String(r.id), r);
+            });
 
-            for (const [itemId, deltaQty] of itemDeltas.entries()) {
-                const dbItem = dbItemsMap.get(itemId);
+            for (const [itemKey, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemKey);
                 if (!dbItem) {
-                    throw new Error(`Item ID "${itemId}" not found in inventory`);
+                    throw new Error(`Item "${itemKey}" not found in inventory`);
                 }
                 const currentStock = parseFloat(dbItem.stock) || 0;
                 // For purchases, deltaQty < 0 means we took TOO MUCH away.
@@ -4469,10 +4875,11 @@ app.put('/api/purchases/:id', async (req, res) => {
             }
 
             // Apply Stock Deltas
-            for (const [itemId, deltaQty] of itemDeltas.entries()) {
+            for (const [itemKey, deltaQty] of itemDeltas.entries()) {
+                const dbItem = dbItemsMap.get(itemKey);
                 await client.query(
                     `UPDATE items SET stock = stock + $1 WHERE id = $2`,
-                    [deltaQty, itemId]
+                    [deltaQty, dbItem.id]
                 );
             }
         }
@@ -4587,15 +4994,8 @@ app.patch('/api/purchases/:id', async (req, res) => {
             values.push(refNo || '');
         }
         if (dueDate !== undefined) {
-            let parsedDueDate = dueDate;
-            if (parsedDueDate && parsedDueDate.includes('/')) {
-                const parts = parsedDueDate.split('/');
-                if (parts.length === 3) parsedDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            } else if (!parsedDueDate) {
-                parsedDueDate = null;
-            }
             updates.push(`due_date = $${idx++}`);
-            values.push(parsedDueDate);
+            values.push(parseDateForDB(dueDate));
         }
         if (paymentTerms !== undefined) {
             updates.push(`payment_terms = $${idx++}`);

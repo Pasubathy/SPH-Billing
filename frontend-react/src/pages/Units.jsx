@@ -117,6 +117,82 @@ const Units = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <style>
+                {`
+                    .unit-table td {
+                        padding: 0 !important;
+                        height: 38px !important;
+                    }
+                    .unit-table th {
+                        padding: 8px 12px !important;
+                    }
+                    .unit-table-input {
+                        width: 100%;
+                        height: 100%;
+                        min-height: 36px;
+                        border: 1px solid transparent;
+                        border-radius: 4px;
+                        padding: 0 4px;
+                        font-size: 13px;
+                        font-family: inherit;
+                        background-color: transparent;
+                        color: var(--text-main);
+                        outline: none;
+                        transition: all 0.12s ease;
+                        box-sizing: border-box;
+                    }
+                    .unit-table-input:hover {
+                        background-color: #F8FAFC;
+                        border-color: #CBD5E1;
+                    }
+                    .unit-table-input:focus {
+                        background-color: #FFFFFF;
+                        border-color: #000B58 !important;
+                        box-shadow: 0 0 0 2px rgba(0, 11, 88, 0.12);
+                    }
+                    .unit-add-input {
+                        width: 100%;
+                        height: 100%;
+                        min-height: 36px;
+                        border: 1px solid transparent;
+                        border-radius: 4px;
+                        padding: 0 4px;
+                        font-size: 13px;
+                        font-family: inherit;
+                        background-color: transparent;
+                        color: var(--text-main);
+                        outline: none;
+                        transition: all 0.12s ease;
+                        box-sizing: border-box;
+                    }
+                    .unit-add-input::placeholder {
+                        color: #94A3B8;
+                    }
+                    .unit-add-input:hover {
+                        background-color: #F8FAFC;
+                        border-color: #CBD5E1;
+                    }
+                    .unit-add-input:focus {
+                        background-color: #FFFFFF;
+                        border-color: #000B58 !important;
+                        box-shadow: 0 0 0 2px rgba(0, 11, 88, 0.12);
+                    }
+                    .unit-table-row {
+                        height: 38px;
+                        background-color: #FFFFFF;
+                    }
+                    .unit-table-row:hover {
+                        background-color: #F8FAFC;
+                    }
+                    .unit-btn-action {
+                        transition: all 0.12s ease;
+                    }
+                    .unit-btn-action:hover {
+                        transform: translateY(-1px);
+                    }
+                `}
+            </style>
+
             {/* Tabs */}
             <div className="page-tabs" style={{ padding: '0 16px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: '#F8F9FA' }}>
                 <NavLink to="/items" className="tab">Item List</NavLink>
@@ -155,41 +231,43 @@ const Units = () => {
                 </div>
 
                 {/* Table Area */}
-                <div className="vendor-table-container" style={{ margin: '0 16px 16px 16px', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
-                    <table className="vendor-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div className="vendor-table-container" style={{ margin: '0 0 16px 0', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
+                    <table className="vendor-table unit-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ height: '40px' }}>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '80px' }}>S. No.</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>Unit Name</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '200px' }}>Short Name</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '150px' }}>Decimal</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '80px' }}>Action</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '70px' }}>S. No.</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>Unit Name</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '220px' }}>Short Name</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '160px' }}>Decimal</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '80px' }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredUnits.map((u, idx) => {
                                 const realIndex = units.findIndex(orig => orig === u);
                                 return (
-                                    <tr key={idx} style={{ height: '40px', backgroundColor: 'white' }}>
-                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{idx + 1}</td>
-                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                    <tr key={idx} className="unit-table-row">
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                             <input 
                                                 type="text" 
+                                                className="unit-table-input"
                                                 value={u.name}
+                                                placeholder="Enter unit name"
                                                 onChange={(e) => updateUnit(realIndex, 'name', e.target.value)}
-                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                             />
                                         </td>
-                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                             <input 
                                                 type="text" 
+                                                className="unit-table-input"
                                                 value={u.shortName}
+                                                placeholder="Enter short name"
                                                 onChange={(e) => updateUnit(realIndex, 'shortName', e.target.value)}
-                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                             />
                                         </td>
-                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
-                                            <div style={{ height: '30px', display: 'flex', alignItems: 'center' }}>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center' }}>
                                                 <CustomSelect
                                                     value={u.allowDecimal}
                                                     onChange={(val) => updateUnit(realIndex, 'allowDecimal', val)}
@@ -197,16 +275,20 @@ const Units = () => {
                                                         { value: 'Yes', label: 'Yes' },
                                                         { value: 'No', label: 'No' }
                                                     ]}
-                                                    height="30px"
+                                                    height="34px"
+                                                    borderRadius="4px"
+                                                    triggerStyle={{ border: '1px solid transparent', backgroundColor: 'transparent' }}
                                                 />
                                             </div>
                                         </td>
-                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
                                             <button 
-                                                style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                                className="unit-btn-action"
+                                                style={{ background: '#FEE2E2', color: '#EF4444', border: '1px solid #FECACA', borderRadius: '4px', width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                                                 onClick={() => { setDeleteIndex(realIndex); setShowDeleteModal(true); }}
+                                                title="Delete unit"
                                             >
-                                                <Trash2 size={16} />
+                                                <Trash2 size={15} />
                                             </button>
                                         </td>
                                     </tr>
@@ -214,28 +296,32 @@ const Units = () => {
                             })}
                             
                             {/* Add Row */}
-                            <tr style={{ height: '40px', backgroundColor: 'white' }}>
-                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{units.length + 1}</td>
-                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                            <tr style={{ height: '42px', backgroundColor: 'white' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center', color: '#6366F1', fontWeight: '600' }}>
+                                    {units.length + 1}
+                                </td>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                     <input 
                                         type="text" 
-                                        placeholder="Unit Name" 
+                                        className="unit-add-input"
+                                        placeholder="Enter New Unit Name (e.g. Kilogram)" 
                                         value={newName}
                                         onChange={(e) => setNewName(e.target.value)}
-                                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                                     />
                                 </td>
-                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                     <input 
                                         type="text" 
-                                        placeholder="Short Name" 
+                                        className="unit-add-input"
+                                        placeholder="Short Name (e.g. Kg)" 
                                         value={newShortName}
                                         onChange={(e) => setNewShortName(e.target.value)}
-                                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                                     />
                                 </td>
-                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
-                                    <div style={{ height: '30px', display: 'flex', alignItems: 'center' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center' }}>
                                         <CustomSelect
                                             value={newAllowDecimal}
                                             onChange={setNewAllowDecimal}
@@ -243,16 +329,20 @@ const Units = () => {
                                                 { value: 'Yes', label: 'Yes' },
                                                 { value: 'No', label: 'No' }
                                             ]}
-                                            height="30px"
+                                            height="34px"
+                                            borderRadius="4px"
+                                            triggerStyle={{ border: '1px solid transparent', backgroundColor: 'transparent' }}
                                         />
                                     </div>
                                 </td>
-                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
                                     <button 
-                                        style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                        className="unit-btn-action"
+                                        style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0, 11, 88, 0.15)' }}
                                         onClick={handleAdd}
+                                        title="Add Unit"
                                     >
-                                        <Plus size={16} />
+                                        <Plus size={15} />
                                     </button>
                                 </td>
                             </tr>

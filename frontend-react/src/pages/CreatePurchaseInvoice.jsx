@@ -152,6 +152,10 @@ export default function CreatePurchaseInvoice() {
   }, [items]);
 
   const handleVendorSelect = (val) => {
+    if (val === 'new_custom_vendor') {
+      setSelectedVendorId(null);
+      return;
+    }
     // val is now vendor ID (stable PK) for existing vendors
     const selectedV = vendorsList.find(v => v.id === val);
     if (selectedV) {
@@ -298,10 +302,34 @@ export default function CreatePurchaseInvoice() {
       }
 
       if (data.vendor && data.vendor.name) {
-        // Since we don't have the vendor list fetched here, we just put the name in the dropdown component as a custom option
-        setVendor(data.vendor.name);
-        if (data.vendor.address) setBillAddress(data.vendor.address);
-        if (data.vendor.gstin) setGstinNo(data.vendor.gstin);
+        const extractedName = String(data.vendor.name).trim();
+        const extractedGstin = String(data.vendor.gstin || '').trim();
+
+        // Check if vendor already exists in vendorsList
+        const matchedVendor = vendorsList.find(v => 
+          (extractedGstin && v.gstin && v.gstin.trim().toLowerCase() === extractedGstin.toLowerCase()) ||
+          (v.vendorName && v.vendorName.trim().toLowerCase() === extractedName.toLowerCase())
+        );
+
+        if (matchedVendor) {
+          setSelectedVendorId(matchedVendor.id);
+          setVendor(matchedVendor.vendorName);
+          setGstinNo(matchedVendor.gstin || matchedVendor.gstIn || extractedGstin || '');
+          setPanNo(matchedVendor.panNumber || matchedVendor.pan || '');
+          setBillAddress(matchedVendor.billAddress || matchedVendor.address || data.vendor.address || '');
+          setBillCity(matchedVendor.billCity || matchedVendor.city || '');
+          setBillState(matchedVendor.billState || matchedVendor.state || '');
+          setBillPincode(matchedVendor.billPinCode || matchedVendor.pin || '');
+          setShipAddress(matchedVendor.shipAddress || '');
+          setShipCity(matchedVendor.shipCity || '');
+          setShipState(matchedVendor.shipState || '');
+          setShipPincode(matchedVendor.shipPinCode || '');
+        } else {
+          setSelectedVendorId(null);
+          setVendor(extractedName);
+          if (data.vendor.address) setBillAddress(data.vendor.address);
+          if (data.vendor.gstin) setGstinNo(data.vendor.gstin);
+        }
       }
 
       if (data.items && Array.isArray(data.items)) {
@@ -507,10 +535,11 @@ export default function CreatePurchaseInvoice() {
                     )}
                   </label>
                   <CustomSelect 
-                    value={selectedVendorId || ''} 
+                    value={selectedVendorId || (vendor ? 'new_custom_vendor' : '')} 
                     onChange={handleVendorSelect} 
                     placeholder="Select Vendor"
                     options={[
+                      ...(vendor && !selectedVendorId ? [{ value: 'new_custom_vendor', label: vendor }] : []),
                       ...vendorsList.map(v => ({ value: v.id, label: v.vendorName })),
                     ]}
                   />

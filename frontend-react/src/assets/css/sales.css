@@ -815,6 +815,7 @@
 .pos-cart-container {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     background: white;
 }
 
@@ -825,7 +826,7 @@
 
 .pos-cart-table th {
     background: #F8FAFC;
-    padding: 12px 16px;
+    padding: 10px 8px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-muted);
@@ -838,7 +839,7 @@
 }
 
 .pos-cart-table td {
-    padding: 12px 16px;
+    padding: 10px 8px;
     border-bottom: 1px solid var(--border-color);
     font-size: 13px;
     color: var(--text-main);
@@ -864,6 +865,8 @@
     gap: 8px;
     margin-top: auto;
     flex-shrink: 0;
+    position: relative;
+    z-index: 20;
 }
 
 .pos-search-bar {

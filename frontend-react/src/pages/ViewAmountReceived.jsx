@@ -177,6 +177,7 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
         const borderCol = '#606060';
         const currentBalance = parseFloat(ar.pending || 0);
         const totalPaid = parseFloat(ar.amount || 0);
+        const totalDiscount = parseFloat(ar.discount || 0);
 
         let invoicesHTML = '';
         if (ar.invoices && ar.invoices.length > 0) {
@@ -185,13 +186,14 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
                     <td style="border-bottom: 1px solid ${borderCol}; border-right: 1px solid ${borderCol}; padding: 6px 12px; white-space: nowrap;">${inv.date || '-'}</td>
                     <td style="border-bottom: 1px solid ${borderCol}; border-right: 1px solid ${borderCol}; padding: 6px 12px; white-space: nowrap;">${inv.invoiceNo || '-'}</td>
                     <td style="border-bottom: 1px solid ${borderCol}; border-right: 1px solid ${borderCol}; padding: 6px 12px; text-align: right; white-space: nowrap;">₹${parseFloat(inv.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                    <td style="border-bottom: 1px solid ${borderCol}; padding: 6px 12px; text-align: right; white-space: nowrap;">₹${parseFloat(inv.allocated || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td style="border-bottom: 1px solid ${borderCol}; ${totalDiscount > 0 ? `border-right: 1px solid ${borderCol}; ` : ''}padding: 6px 12px; text-align: right; white-space: nowrap;">₹${parseFloat(inv.allocated || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    ${totalDiscount > 0 ? `<td style="border-bottom: 1px solid ${borderCol}; padding: 6px 12px; text-align: right; white-space: nowrap;">₹${parseFloat(inv.discount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>` : ''}
                 </tr>
             `).join('');
         } else {
             invoicesHTML = `
                 <tr>
-                    <td colspan="4" style="border-bottom: 1px solid ${borderCol}; padding: 16px; text-align: center; color: #64748b; font-style: italic;">No specific bills allocated (Advance Payment)</td>
+                    <td colspan="${totalDiscount > 0 ? 5 : 4}" style="border-bottom: 1px solid ${borderCol}; padding: 16px; text-align: center; color: #64748b; font-style: italic;">No specific bills allocated (Advance Payment)</td>
                 </tr>
             `;
         }
@@ -246,7 +248,8 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
                                 <th style="border-right: 1px solid ${borderCol}; padding: 6px 12px; width: 100px; white-space: nowrap;">Date</th>
                                 <th style="border-right: 1px solid ${borderCol}; padding: 6px 12px; width: 120px; white-space: nowrap;">INV No.</th>
                                 <th style="border-right: 1px solid ${borderCol}; padding: 6px 12px; text-align: right; white-space: nowrap;">Invoice Amount</th>
-                                <th style="padding: 6px 12px; text-align: right; white-space: nowrap;">Amount Paid</th>
+                                <th style="${totalDiscount > 0 ? `border-right: 1px solid ${borderCol}; ` : ''}padding: 6px 12px; text-align: right; white-space: nowrap;">Amount Paid</th>
+                                ${totalDiscount > 0 ? `<th style="padding: 6px 12px; text-align: right; white-space: nowrap;">Discount</th>` : ''}
                             </tr>
                         </thead>
                         <tbody>
@@ -260,11 +263,21 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
                             <div style="font-weight: bold;">Amount In Words</div>
                             <div style="margin-top: 2px;">${numberToWords(totalPaid)}</div>
                         </div>
-                        <div style="width: 220px; text-align: left; border-left: 1px solid ${borderCol}; padding-left: 16px; flex-shrink: 0;">
+                        <div style="width: 230px; text-align: left; border-left: 1px solid ${borderCol}; padding-left: 16px; flex-shrink: 0;">
                             <div style="display: flex; justify-content: space-between;">
                                 <span>Paid Amount :</span>
                                 <span style="font-weight: bold;">₹${totalPaid.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                             </div>
+                            ${totalDiscount > 0 ? `
+                            <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+                                <span>Discount :</span>
+                                <span style="font-weight: bold; color: #16A34A;">₹${totalDiscount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+                                <span>Total Settled :</span>
+                                <span style="font-weight: bold;">₹${(totalPaid + totalDiscount).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                            ` : ''}
                             <div style="display: flex; justify-content: space-between; margin-top: 2px;">
                                 <span>Current Balance :</span>
                                 <span style="font-weight: bold;">₹${currentBalance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>

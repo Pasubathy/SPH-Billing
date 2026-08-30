@@ -4,8 +4,192 @@ import { ArrowLeft, Search, Plus, Trash2, FileText, Calendar, Scan, PlusSquare, 
 import { Html5Qrcode } from 'html5-qrcode';
 import CustomSelect from '../components/CustomSelect';
 import CustomerModal from '../components/CustomerModal';
+import '../assets/css/sales.css';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+function SwipeableCartRow({ row, index, updateRow, deleteRow, calcTaxAmt }) {
+  const [offsetX, setOffsetX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const startXRef = useRef(null);
+  const startYRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const offsetXRef = useRef(0);
+  offsetXRef.current = offsetX;
+
+  const handlePointerDown = (e) => {
+    // Ignore clicks on inputs, selects, or buttons
+    if (e.target.closest('input, select, button, a')) return;
+    if (e.button !== undefined && e.button !== 0) return;
+
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+    isDraggingRef.current = false;
+  };
+
+  const handlePointerMove = (e) => {
+    if (startXRef.current === null) return;
+
+    const dx = e.clientX - startXRef.current;
+    const dy = e.clientY - startYRef.current;
+
+    if (!isDraggingRef.current) {
+      // If moving vertically more than horizontally, cancel so user can scroll
+      if (Math.abs(dy) > 7 && Math.abs(dy) > Math.abs(dx)) {
+        startXRef.current = null;
+        return;
+      }
+      if (Math.abs(dx) > 7) {
+        isDraggingRef.current = true;
+        setIsDragging(true);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch (err) {}
+      }
+    }
+
+    if (isDraggingRef.current) {
+      e.preventDefault();
+      setOffsetX(dx);
+    }
+  };
+
+  const finishDrag = (e) => {
+    if (startXRef.current === null) return;
+
+    if (isDraggingRef.current) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+
+      const currentOffset = offsetXRef.current;
+      const threshold = 70; // 70px drag in either direction triggers deletion
+      if (Math.abs(currentOffset) > threshold) {
+        setIsDeleting(true);
+        const exitTarget = currentOffset > 0 ? 600 : -600;
+        setOffsetX(exitTarget);
+        setTimeout(() => {
+          deleteRow(index);
+        }, 220);
+      } else {
+        setOffsetX(0);
+      }
+    }
+
+    startXRef.current = null;
+    startYRef.current = null;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+  };
+
+  const amount = row.qty * row.rate;
+  const finalAmt = amount - (parseFloat(row.disc) || 0);
+  const taxAmt = calcTaxAmt(finalAmt, row.taxPercent, row.sellingTaxType);
+  const totalAmt = finalAmt + taxAmt;
+
+  const isPastThreshold = Math.abs(offsetX) > 70;
+  const isSwipeRight = offsetX > 30;
+  const isSwipeLeft = offsetX < -30;
+
+  return (
+    <tr
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      title="Swipe row left or right to remove item"
+      style={{
+        transform: `translateX(${offsetX}px)`,
+        transition: isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease, background-color 0.2s ease',
+        opacity: isDeleting ? 0 : 1 - Math.min(0.5, Math.abs(offsetX) / 500),
+        backgroundColor: isPastThreshold
+          ? '#FEE2E2'
+          : Math.abs(offsetX) > 20
+          ? '#FFF1F2'
+          : undefined,
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'pan-y',
+        userSelect: isDragging ? 'none' : 'auto',
+      }}
+    >
+      <td style={{ width: '135px', maxWidth: '135px' }}>
+        {isSwipeRight && (
+          <div style={{ color: '#EF4444', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+            <Trash2 size={12} /> Remove
+          </div>
+        )}
+        <div className="pos-cart-item-name" style={{ wordBreak: 'break-word' }}>{row.item.name}</div>
+        <div className="pos-cart-item-desc" style={{ color: 'var(--text-muted)' }}>{row.item.code}</div>
+      </td>
+      <td>
+        <input 
+          type="number" 
+          className="cell-input pos-transparent-input" 
+          value={row.qty}
+          onChange={(e) => updateRow(index, 'qty', e.target.value)}
+          min="0"
+          style={{ textAlign: 'center' }}
+        />
+      </td>
+      <td>
+        {row.unitOptions.length > 1 ? (
+          <select 
+            className="cell-input pos-transparent-input"
+            value={row.unitIndex}
+            onChange={(e) => updateRow(index, 'unitIndex', parseInt(e.target.value))}
+            style={{ textAlignLast: 'center', appearance: 'auto' }}
+          >
+            {row.unitOptions.map((u, i) => (
+              <option key={i} value={i}>{u.label}</option>
+            ))}
+          </select>
+        ) : (
+          <div style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-main)' }}>
+            {row.unitOptions[0]?.label}
+          </div>
+        )}
+      </td>
+      <td>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <span style={{ fontSize: '13px', color: 'var(--text-main)', marginRight: '4px' }}>₹</span>
+          <input 
+            type="number" 
+            className="cell-input pos-transparent-input" 
+            value={row.rate}
+            onChange={(e) => updateRow(index, 'rate', e.target.value)}
+            min="0"
+            style={{ textAlign: 'right', width: '100%' }}
+          />
+        </div>
+      </td>
+      <td style={{ textAlign: 'right', fontSize: '13px', color: 'var(--text-main)' }}>₹{finalAmt.toFixed(2)}</td>
+      <td style={{ textAlign: 'right', fontSize: '12px', width: '80px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', position: 'relative' }}>
+          <input 
+            type="number" 
+            className="cell-input pos-transparent-input" 
+            value={row.taxPercent}
+            onChange={(e) => updateRow(index, 'taxPercent', e.target.value)}
+            min="0"
+            style={{ textAlign: 'right', paddingRight: '24px' }}
+          />
+          <span style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: 'var(--text-main)', fontSize: '13px' }}>%</span>
+        </div>
+        <div style={{ color: 'var(--text-muted)', marginTop: '2px', paddingRight: '8px' }}>₹{taxAmt.toFixed(2)}</div>
+      </td>
+      <td style={{ textAlign: 'right', fontWeight: '600', fontSize: '13px', color: 'var(--text-main)' }}>
+        {isSwipeLeft && (
+          <div style={{ color: '#EF4444', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', marginBottom: '2px' }}>
+            <Trash2 size={12} /> Remove
+          </div>
+        )}
+        ₹{totalAmt.toFixed(2)}
+      </td>
+    </tr>
+  );
+}
 
 export default function CreateSalesInvoice() {
   const navigate = useNavigate();
@@ -99,64 +283,80 @@ export default function CreateSalesInvoice() {
 
   
   useEffect(() => {
-    if (location.state?.editMode && location.state?.invoiceData) {
-        const data = location.state.invoiceData;
-        setInvoiceNumber(data.invoiceNo || data.invoice_no || data.piNo || data.pi_no);
-        setBillingDate(data.date);
-        
-        if (typeof setActiveCustomer !== 'undefined') {
-           setActiveCustomer({ id: data.customerId || data.customer_id || 'walk-in', name: data.customerName || data.customer_name });
-        }
-        if (typeof setActiveVendor !== 'undefined') {
-           setActiveVendor({ id: data.vendorId || data.vendor_id, name: data.vendorName || data.vendor_name });
-        }
-        
-        const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
-        setBillingRows(parsedItems.map(it => ({
-            ...it,
-            item: it,
-            qty: parseFloat(it.qty) || 1,
-            rate: parseFloat(it.rate) || 0,
-            disc: parseFloat(it.disc) || 0,
-            unitIndex: 0,
-            unitOptions: [{ label: it.unit || 'Unit', price: parseFloat(it.rate) || 0, isBase: true }]
-        })));
-        
-        if (typeof setManualReceivedAmt !== 'undefined') setManualReceivedAmt(data.paidAmount || data.paid_amount || 0);
-        if (typeof setManualPaidAmt !== 'undefined') setManualPaidAmt(data.paidAmount || data.paid_amount || 0);
-        if (typeof setDiscountVal !== 'undefined') {
-            setDiscountVal(data.discountAmount || data.discount_amount || 0);
-            setDiscountType('rupee');
-        }
-    }
-  }, [location]);
-
-  useEffect(() => {
-    if (location.state?.editMode) return;
-    // Set today's date
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    setBillingDate(`${dd}/${mm}/${yyyy}`);
-
-    // Fetch data (sales-returns fetch removed — credit now from customers.storeCreditBalance)
+    // 1. Fetch reference items, units, and customers
     Promise.all([
         fetch('/api/items').then(res => res.json()).catch(() => []),
         fetch('/api/units').then(res => res.json()).catch(() => []),
         fetch('/api/customers').then(res => res.json()).catch(() => [])
     ]).then(([items, units, customersData]) => {
-        setAllItems(items);
-        setAllUnits(units);
-        
-        const walkInSaved = (customersData || []).find(c => c.name === 'Walk In Customer' || c.id === 'walk-in');
-        if (walkInSaved) {
-            setActiveCustomer(walkInSaved);
-        }
+        setAllItems(items || []);
+        setAllUnits(units || []);
 
-        fetch('/api/invoice-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
-            setInvoiceNumber('INV' + String(counterData.counter || 1).padStart(3, '0'));
-        });
+        if (location.state?.editMode && location.state?.invoiceData) {
+            const data = location.state.invoiceData;
+            setInvoiceNumber(data.invoiceNumber || data.invoiceNo || data.invoice_no || data.piNo || data.pi_no || '');
+            if (data.date) setBillingDate(data.date);
+
+            const foundCust = (customersData || []).find(c => 
+                (data.customerId && String(c.id) === String(data.customerId)) || 
+                (data.customerName && (c.customerName || c.name || '').toLowerCase() === (data.customerName || '').toLowerCase())
+            );
+            if (foundCust) {
+                setActiveCustomer(foundCust);
+            } else if (data.customerId || data.customerName) {
+                setActiveCustomer({ 
+                    id: data.customerId || 'walk-in', 
+                    name: data.customerName || 'Walk In Customer',
+                    mobile: data.customerMobile || '',
+                    address: data.customerAddress || '',
+                    city: data.city || '',
+                    state: data.state || '',
+                    pin: data.pin || '',
+                    gstin: data.customerGst || ''
+                });
+            } else {
+                const walkInSaved = (customersData || []).find(c => c.name === 'Walk In Customer' || c.id === 'walk-in');
+                if (walkInSaved) setActiveCustomer(walkInSaved);
+            }
+
+            const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+            setBillingRows(parsedItems.map(it => {
+                const dbItem = (items || []).find(x => String(x.code) === String(it.code) || String(x.id) === String(it.id));
+                return {
+                    ...it,
+                    item: dbItem || it,
+                    qty: parseFloat(it.qty) || 1,
+                    rate: parseFloat(it.rate) || 0,
+                    disc: parseFloat(it.disc) || 0,
+                    unitIndex: 0,
+                    unitOptions: [{ label: it.unit || 'Unit', price: parseFloat(it.rate) || 0, isBase: true }]
+                };
+            }));
+
+            if (data.paidAmount !== undefined || data.receivedAmount !== undefined || data.paid_amount !== undefined) {
+                setManualReceivedAmt(data.receivedAmount ?? data.paidAmount ?? data.paid_amount ?? 0);
+            }
+            if (data.discountAmount !== undefined || data.discount_amount !== undefined) {
+                setDiscountVal(data.discountAmount || data.discount_amount || 0);
+                setDiscountType('rupee');
+            }
+        } else {
+            // New invoice mode
+            const today = new Date();
+            const dd = String(today.getDate()).padStart(2, '0');
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const yyyy = today.getFullYear();
+            setBillingDate(`${dd}/${mm}/${yyyy}`);
+
+            const walkInSaved = (customersData || []).find(c => c.name === 'Walk In Customer' || c.id === 'walk-in');
+            if (walkInSaved) {
+                setActiveCustomer(walkInSaved);
+            }
+
+            fetch('/api/invoice-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
+                setInvoiceNumber('INV' + String(counterData.counter || 1).padStart(3, '0'));
+            });
+        }
     });
 
     const handleClickOutside = (event) => {
@@ -166,7 +366,7 @@ export default function CreateSalesInvoice() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [location]);
 
   const getBaseRate = (rawPrice, item) => {
     const gstStr = item.gstRate || 'none';
@@ -505,97 +705,29 @@ export default function CreateSalesInvoice() {
                     <table className="pos-cart-table">
                         <thead>
                             <tr>
-                                <th style={{ textAlign: 'left' }}>Item Name</th>
+                                <th style={{ width: '135px', textAlign: 'left' }}>Item Name</th>
                                 <th style={{ width: '60px', textAlign: 'center' }}>Qty</th>
                                 <th style={{ width: '70px', textAlign: 'center' }}>Unit</th>
-                                <th style={{ width: '80px', textAlign: 'right' }}>Rate</th>
+                                <th style={{ width: '85px', textAlign: 'right' }}>Rate</th>
                                 <th style={{ width: '80px', textAlign: 'right' }}>Amt</th>
-                                <th style={{ width: '70px', textAlign: 'right' }}>Tax %</th>
+                                <th style={{ width: '80px', textAlign: 'right' }}>Tax %</th>
                                 <th style={{ width: '90px', textAlign: 'right' }}>Tot Amt</th>
-                                <th style={{ width: '40px', textAlign: 'center' }}></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {billingRows.map((row, index) => {
-                                const amount = row.qty * row.rate;
-                                const finalAmt = amount - (parseFloat(row.disc) || 0);
-                                const taxAmt = calcTaxAmt(finalAmt, row.taxPercent, row.sellingTaxType);
-                                const totalAmt = finalAmt + taxAmt;
-
-                                return (
-                                    <tr key={index}>
-                                        <td>
-                                            <div className="pos-cart-item-name">{row.item.name}</div>
-                                            <div className="pos-cart-item-desc" style={{ color: 'var(--text-muted)' }}>{row.item.code}</div>
-                                        </td>
-                                        <td>
-                                            <input 
-                                                type="number" 
-                                                className="cell-input pos-transparent-input" 
-                                                value={row.qty}
-                                                onChange={(e) => updateRow(index, 'qty', e.target.value)}
-                                                min="0"
-                                                style={{ textAlign: 'center' }}
-                                            />
-                                        </td>
-                                        <td>
-                                            {row.unitOptions.length > 1 ? (
-                                                <select 
-                                                    className="cell-input pos-transparent-input"
-                                                    value={row.unitIndex}
-                                                    onChange={(e) => updateRow(index, 'unitIndex', parseInt(e.target.value))}
-                                                    style={{ textAlignLast: 'center', appearance: 'auto' }}
-                                                >
-                                                    {row.unitOptions.map((u, i) => (
-                                                        <option key={i} value={i}>{u.label}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <div style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-main)' }}>
-                                                    {row.unitOptions[0]?.label}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                                <span style={{ fontSize: '13px', color: 'var(--text-main)', marginRight: '4px' }}>₹</span>
-                                                <input 
-                                                    type="number" 
-                                                    className="cell-input pos-transparent-input" 
-                                                    value={row.rate}
-                                                    onChange={(e) => updateRow(index, 'rate', e.target.value)}
-                                                    min="0"
-                                                    style={{ textAlign: 'right' }}
-                                                />
-                                            </div>
-                                        </td>
-                                        <td style={{ textAlign: 'right', fontSize: '13px', color: 'var(--text-main)' }}>₹{finalAmt.toFixed(2)}</td>
-                                        <td style={{ textAlign: 'right', fontSize: '12px', width: '80px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', position: 'relative' }}>
-                                                <input 
-                                                    type="number" 
-                                                    className="cell-input pos-transparent-input" 
-                                                    value={row.taxPercent}
-                                                    onChange={(e) => updateRow(index, 'taxPercent', e.target.value)}
-                                                    min="0"
-                                                    style={{ textAlign: 'right', paddingRight: '16px' }}
-                                                />
-                                                <span style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: 'var(--text-main)', fontSize: '13px' }}>%</span>
-                                            </div>
-                                            <div style={{ color: 'var(--text-muted)', marginTop: '2px', paddingRight: '8px' }}>₹{taxAmt.toFixed(2)}</div>
-                                        </td>
-                                        <td style={{ textAlign: 'right', fontWeight: '600', fontSize: '13px', color: 'var(--text-main)' }}>₹{totalAmt.toFixed(2)}</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <button className="btn-delete-row" onClick={() => deleteRow(index)} style={{ margin: '0 auto', color: '#EF4444' }}>
-                                                <Trash2 style={{ width: '16px', height: '16px' }} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {billingRows.map((row, index) => (
+                                <SwipeableCartRow 
+                                    key={row.item.code || index}
+                                    row={row}
+                                    index={index}
+                                    updateRow={updateRow}
+                                    deleteRow={deleteRow}
+                                    calcTaxAmt={calcTaxAmt}
+                                />
+                            ))}
                             {billingRows.length === 0 && (
                                 <tr>
-                                    <td colSpan="8" style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
                                         Cart is empty
                                     </td>
                                 </tr>
@@ -652,11 +784,11 @@ export default function CreateSalesInvoice() {
                             {totalTaxAmt > 0 && (
                                 <>
                                     <div className="summary-row">
-                                        <span>SGST {((billingRows[0]?.taxPercent || 0) / 2).toFixed(1).replace(/\.0$/, '')}%  - ₹</span>
+                                        <span>SGST {((billingRows[0]?.taxPercent || 0) / 2).toFixed(1).replace(/\.0$/, '')} %  - ₹</span>
                                         <span>₹{(totalTaxAmt / 2).toFixed(2)}</span>
                                     </div>
                                     <div className="summary-row">
-                                        <span>CGST {((billingRows[0]?.taxPercent || 0) / 2).toFixed(1).replace(/\.0$/, '')}%</span>
+                                        <span>CGST {((billingRows[0]?.taxPercent || 0) / 2).toFixed(1).replace(/\.0$/, '')} %</span>
                                         <span>₹{(totalTaxAmt / 2).toFixed(2)}</span>
                                     </div>
                                 </>
@@ -700,6 +832,8 @@ export default function CreateSalesInvoice() {
                                     ]}
                                     width="60px"
                                     height="38px"
+                                    menuDirection="up"
+                                    minWidth="70px"
                                 />
                                 <input 
                                     type="number" 

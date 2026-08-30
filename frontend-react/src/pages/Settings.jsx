@@ -9,7 +9,21 @@ const STATES = ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Maharash
 
 const PREVIEW_ITEM = { code: '1001', name: 'Nails', price: '₹150.00/Box' };
 
-const defaultAccount = { company: '', mobile: '', email: '', address: '', isGst: 'No', gstin: '', pan: '', country: 'India', state: 'Tamil Nadu', city: '', pin: '', logo: '', sign: '' };
+const defaultAccount = {
+  company: 'Sri Parvathi Hardwares',
+  mobile: '9994121042',
+  email: '',
+  address: '31/11, Pukkulam Road, Thiyagadurgam',
+  isGst: 'No',
+  gstin: '',
+  pan: '',
+  country: 'India',
+  state: 'Tamil Nadu',
+  city: 'Kallakurichi',
+  pin: '606206',
+  logo: '',
+  sign: ''
+};
 
 const defaultTagSettings = {
   tsPrintType: 'thermal',
@@ -85,7 +99,21 @@ export default function Settings() {
 
   useEffect(() => {
     try {
-      const a = JSON.parse(localStorage.getItem('myAccountData')); if (a) setAcc(p => ({ ...p, ...a }));
+      const a = JSON.parse(localStorage.getItem('myAccountData'));
+      if (a) {
+        setAcc(p => ({
+          ...defaultAccount,
+          ...a,
+          company: a.company || defaultAccount.company,
+          mobile: a.mobile || defaultAccount.mobile,
+          address: a.address || defaultAccount.address,
+          city: a.city || defaultAccount.city,
+          pin: a.pin || defaultAccount.pin
+        }));
+      } else {
+        setAcc(defaultAccount);
+        localStorage.setItem('myAccountData', JSON.stringify(defaultAccount));
+      }
       const t = JSON.parse(localStorage.getItem('tagSettings')); if (t) setTag(p => ({ ...p, ...t }));
       const i = JSON.parse(localStorage.getItem('invoiceSettings')); if (i) setInv(p => ({ ...p, ...i }));
     } catch (e) { }

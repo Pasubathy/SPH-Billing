@@ -82,6 +82,82 @@ const Categories = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <style>
+                {`
+                    .category-table td {
+                        padding: 0 !important;
+                        height: 38px !important;
+                    }
+                    .category-table th {
+                        padding: 8px 12px !important;
+                    }
+                    .category-table-input {
+                        width: 100%;
+                        height: 100%;
+                        min-height: 36px;
+                        border: 1px solid transparent;
+                        border-radius: 4px;
+                        padding: 0 4px;
+                        font-size: 13px;
+                        font-family: inherit;
+                        background-color: transparent;
+                        color: var(--text-main);
+                        outline: none;
+                        transition: all 0.12s ease;
+                        box-sizing: border-box;
+                    }
+                    .category-table-input:hover {
+                        background-color: #F8FAFC;
+                        border-color: #CBD5E1;
+                    }
+                    .category-table-input:focus {
+                        background-color: #FFFFFF;
+                        border-color: #000B58 !important;
+                        box-shadow: 0 0 0 2px rgba(0, 11, 88, 0.12);
+                    }
+                    .category-add-input {
+                        width: 100%;
+                        height: 100%;
+                        min-height: 36px;
+                        border: 1px solid transparent;
+                        border-radius: 4px;
+                        padding: 0 4px;
+                        font-size: 13px;
+                        font-family: inherit;
+                        background-color: transparent;
+                        color: var(--text-main);
+                        outline: none;
+                        transition: all 0.12s ease;
+                        box-sizing: border-box;
+                    }
+                    .category-add-input::placeholder {
+                        color: #94A3B8;
+                    }
+                    .category-add-input:hover {
+                        background-color: #F8FAFC;
+                        border-color: #CBD5E1;
+                    }
+                    .category-add-input:focus {
+                        background-color: #FFFFFF;
+                        border-color: #000B58 !important;
+                        box-shadow: 0 0 0 2px rgba(0, 11, 88, 0.12);
+                    }
+                    .category-table-row {
+                        height: 38px;
+                        background-color: #FFFFFF;
+                    }
+                    .category-table-row:hover {
+                        background-color: #F8FAFC;
+                    }
+                    .category-btn-action {
+                        transition: all 0.12s ease;
+                    }
+                    .category-btn-action:hover {
+                        transform: translateY(-1px);
+                    }
+                `}
+            </style>
+
             {/* Tabs */}
             <div className="page-tabs" style={{ padding: '0 16px 0 0', borderBottom: '1px solid var(--border-color)', backgroundColor: '#F8F9FA' }}>
                 <NavLink to="/items" className="tab">Item List</NavLink>
@@ -120,59 +196,66 @@ const Categories = () => {
                 </div>
 
                 {/* Table Area */}
-                <div className="vendor-table-container" style={{ margin: '0 16px 16px 16px', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
-                    <table className="vendor-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div className="vendor-table-container" style={{ margin: '0 0 16px 0', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', overflowY: 'auto', flex: 1 }}>
+                    <table className="vendor-table category-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ height: '40px' }}>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '80px' }}>S. No.</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>Category Name</th>
-                                <th style={{ backgroundColor: '#F8FAFC', padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '80px' }}>Action</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', width: '70px' }}>S. No.</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>Category Name</th>
+                                <th style={{ backgroundColor: '#F8FAFC', padding: '8px 12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', borderRight: 'none', width: '80px' }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredCategories.map((c, idx) => {
                                 const realIndex = categories.findIndex(orig => orig === c);
                                 return (
-                                    <tr key={idx} style={{ height: '40px', backgroundColor: 'white' }}>
-                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{idx + 1}</td>
-                                        <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                                    <tr key={idx} className="category-table-row">
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                             <input 
                                                 type="text" 
+                                                className="category-table-input"
                                                 value={c.name}
+                                                placeholder="Enter category name"
                                                 onChange={(e) => updateCategory(realIndex, e.target.value)}
-                                                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                             />
                                         </td>
-                                        <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
+                                        <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
                                             <button 
-                                                style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                                className="category-btn-action"
+                                                style={{ background: '#FEE2E2', color: '#EF4444', border: '1px solid #FECACA', borderRadius: '4px', width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                                                 onClick={() => { setDeleteIndex(realIndex); setShowDeleteModal(true); }}
+                                                title="Delete category"
                                             >
-                                                <Trash2 size={16} />
+                                                <Trash2 size={15} />
                                             </button>
                                         </td>
                                     </tr>
                                 );
                             })}
                             {/* Add Row */}
-                            <tr style={{ height: '40px', backgroundColor: 'white' }}>
-                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}>{categories.length + 1}</td>
-                                <td style={{ padding: '0 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
+                            <tr style={{ height: '42px', backgroundColor: 'white' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center', color: '#6366F1', fontWeight: '600' }}>
+                                    {categories.length + 1}
+                                </td>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)' }}>
                                     <input 
                                         type="text" 
-                                        placeholder="Category Name" 
+                                        className="category-add-input"
+                                        placeholder="Enter New Category Name (e.g. Electricals)" 
                                         value={newCategoryName}
                                         onChange={(e) => setNewCategoryName(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontFamily: 'inherit', backgroundColor: 'transparent' }}
                                     />
                                 </td>
-                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
+                                <td style={{ padding: '1px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px', textAlign: 'center' }}>
                                     <button 
-                                        style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                        className="category-btn-action"
+                                        style={{ background: '#000B58', color: 'white', border: 'none', borderRadius: '4px', width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0, 11, 88, 0.15)' }}
                                         onClick={handleAdd}
+                                        title="Add Category"
                                     >
-                                        <Plus size={16} />
+                                        <Plus size={15} />
                                     </button>
                                 </td>
                             </tr>

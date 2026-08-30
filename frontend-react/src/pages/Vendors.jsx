@@ -89,16 +89,16 @@ const Vendors = () => {
 
             {/* Score Cards */}
             <div className="vendor-stat-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', padding: '16px', margin: 0 }}>
-                <div className="vendor-stat-card" style={{ background: 'white', border: '1.5px solid #000B58', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Total Vendor</span>
+                <div className="vendor-stat-card" style={{ background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Total Vendor</span>
                     <span className="vendor-stat-value" style={{ fontSize: '20px', fontWeight: '700', color: '#000B58', alignSelf: 'flex-end' }}>{vendors.length}</span>
                 </div>
-                <div className="vendor-stat-card" style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Purchase Amount</span>
-                    <span className="vendor-stat-value" style={{ fontSize: '20px', fontWeight: '700', color: '#22C55E', alignSelf: 'flex-end' }}>₹{totalVendorPurchase.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</span>
+                <div className="vendor-stat-card" style={{ background: '#ECFDF5', border: '1px solid #D1FAE5', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Purchase Amount</span>
+                    <span className="vendor-stat-value" style={{ fontSize: '20px', fontWeight: '700', color: '#10B981', alignSelf: 'flex-end' }}>₹{totalVendorPurchase.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</span>
                 </div>
-                <div className="vendor-stat-card" style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>Pending to Pay</span>
+                <div className="vendor-stat-card" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: '8px', padding: '10px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '70px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                    <span className="vendor-stat-label" style={{ fontSize: '13px', fontWeight: '500', color: '#475569', alignSelf: 'flex-start' }}>Pending to Pay</span>
                     <span className="vendor-stat-value value-red" style={{ fontSize: '20px', fontWeight: '700', color: '#EF4444', alignSelf: 'flex-end' }}>₹{totalVendorPending.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</span>
                 </div>
             </div>
