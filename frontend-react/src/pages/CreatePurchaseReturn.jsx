@@ -46,6 +46,7 @@ export default function CreatePurchaseReturn() {
   const [taxAmount, setTaxAmount] = useState(0);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formIdempotencyKey, setFormIdempotencyKey] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random()));
 
   
   useEffect(() => {
@@ -302,12 +303,14 @@ export default function CreatePurchaseReturn() {
 
       const targetEndpoint = location.state?.editMode ? `/api/purchase-returns/${location.state.returnData.id}` : '/api/purchase-returns/create';
 
-      const authToken = localStorage.getItem('sph_session_token');
+      const rawToken = localStorage.getItem('sph_auth_token');
+      const token = (rawToken && rawToken !== 'null' && rawToken !== 'undefined') ? rawToken.trim() : null;
       const saveRes = await fetch(targetEndpoint, {
         method: location.state?.editMode ? 'PUT' : 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+          'Idempotency-Key': formIdempotencyKey,
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify(payload)
       });
@@ -423,6 +426,7 @@ export default function CreatePurchaseReturn() {
                     disabled={!selectedVendorId}
                     options={purchaseInvoices
                         .filter(pi => {
+                            if (pi.status === 'CANCELLED') return false;
                             const v = vendors.find(vend => vend.id === selectedVendorId);
                             return v && (pi.vendorName === v.vendorName || pi.vendorId === v.id);
                         })

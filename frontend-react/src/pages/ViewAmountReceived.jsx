@@ -67,10 +67,13 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
         if (isCancelling) return;
         setIsCancelling(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const res = await fetch(`/api/receipts/${currentAR.id}/cancel`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify({ reason: cancelReason.trim() })
             });
             const data = await res.json();
@@ -84,7 +87,7 @@ const ViewAmountReceived = ({ initialAR, allAR: propAllAR, customers, onBack, on
 
             // Refresh from backend
             const refreshRes = await fetch('/api/payments', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
             });
             if (refreshRes.ok) {
                 const freshARs = await refreshRes.json();

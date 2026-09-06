@@ -33,6 +33,9 @@ const app = express();
 const HTTP_PORT = 3000;
 const HTTPS_PORT = 3443;
 
+// Configure Express trust proxy for Vercel/reverse-proxies (trusted upstream hop)
+app.set('trust proxy', 1);
+
 // Performance & Compression Middleware
 app.use(compression({
     level: 6,
@@ -47,33 +50,41 @@ app.use(compression({
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-// Custom Security Headers Middleware (OWASP/Helmet alternative)
+// Modern Security Headers Middleware (OWASP/Helmet compliant)
 app.use((req, res, next) => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN'); // Prevents clickjacking
     res.setHeader('X-Content-Type-Options', 'nosniff'); // Prevents MIME-sniffing
-    res.setHeader('X-XSS-Protection', '1; mode=block'); // XSS Filter protection
+    res.setHeader('X-XSS-Protection', '0'); // Modern OWASP recommendation to disable buggy legacy XSS auditor
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); // Prevents referrer leaks
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()'); // Permits same-origin barcode scanner, blocks mic & geolocation
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+
+    // Conditional HSTS: only enforce on HTTPS / production to avoid breaking local dev
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production') {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     next();
 });
 
-// CORS Middleware
+// Strict CORS Middleware (No wildcards)
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin) {
-        const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim());
+        const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
+        const isDev = process.env.NODE_ENV === 'development';
         const isAllowed = allowedOrigins.includes(origin) || 
-                          origin.endsWith('.vercel.app') ||
-                          (process.env.NODE_ENV === 'development' && 
+                          (isDev && 
                            (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin) ||
                             /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin) ||
                             /^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/.test(origin) ||
                             /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+(:\d+)?$/.test(origin)));
         if (isAllowed) {
             res.header('Access-Control-Allow-Origin', origin);
+            res.header('Vary', 'Origin');
         }
     }
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Idempotency-Key, x-admin-key');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
@@ -87,9 +98,25 @@ const requireAuth = async (req, res, next) => {
         return next();
     }
     
-    // Allow login endpoint and db init without auth
-    if (req.path === '/auth/login' || req.originalUrl === '/api/auth/login' || req.originalUrl === '/api/init-db') {
+    // Allow public health and login endpoints without auth
+    if (req.path === '/health' || req.originalUrl === '/api/health' || req.path === '/api/health') {
         return next();
+    }
+    if (req.path === '/auth/login' || req.originalUrl === '/api/auth/login') {
+        return next();
+    }
+
+    // Secure database initialization endpoint: in production disabled, in dev requires admin session or x-admin-key header
+    if (req.path === '/init-db' || req.originalUrl === '/api/init-db') {
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(404).json({ error: 'Endpoint disabled in production' });
+        }
+        const setupKey = req.headers['x-admin-key'];
+        if (setupKey && setupKey === process.env.ADMIN_PASSWORD_HASH) {
+            req.user = { id: 'usr_admin_default', username: process.env.ADMIN_USERNAME || 'admin', role: 'ADMIN' };
+            req.username = req.user.username;
+            return next();
+        }
     }
 
     // Allow deprecated endpoints to bypass auth so they return 410 Gone immediately
@@ -106,24 +133,57 @@ const requireAuth = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     try {
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-        const sessionRes = await pool.query(
-            "SELECT username, expires_at, revoked_at FROM active_sessions WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()",
-            [tokenHash]
-        );
+        const sessionRes = await pool.query(`
+            SELECT s.username, s.user_id, s.role, s.expires_at, s.revoked_at, u.role as user_role, u.status as user_status, u.id as db_user_id
+            FROM active_sessions s
+            LEFT JOIN users u ON (s.user_id = u.id OR (s.user_id IS NULL AND u.username = s.username))
+            WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
+        `, [tokenHash]);
 
         if (sessionRes.rows.length === 0) {
             return res.status(401).json({ error: 'Unauthorized: Invalid or expired session token' });
         }
 
+        const sessionRow = sessionRes.rows[0];
+        if (sessionRow.user_status && sessionRow.user_status !== 'ACTIVE') {
+            return res.status(401).json({ error: 'Unauthorized: Account is deactivated' });
+        }
+
+        // Enforce verified role from users table: never silently upgrade unassigned or pre-RBAC sessions to ADMIN
+        const resolvedRole = sessionRow.user_role;
+        if (!resolvedRole) {
+            return res.status(401).json({ error: 'Unauthorized: Session role unverified. Please log in again.' });
+        }
+
         // Update last_used_at in background
         pool.query("UPDATE active_sessions SET last_used_at = NOW() WHERE token_hash = $1", [tokenHash]).catch(err => {});
 
-        req.username = sessionRes.rows[0].username;
+        req.user = {
+            id: sessionRow.db_user_id || sessionRow.user_id,
+            username: sessionRow.username,
+            role: resolvedRole
+        };
+        req.username = sessionRow.username;
         next();
     } catch (err) {
         console.error('Session validation failed:', err);
         return res.status(500).json({ error: 'Internal Server Error' });
     }
+};
+
+// Role-based access control middleware
+const requireRole = (allowedRoles) => {
+    return (req, res, next) => {
+        if (!req.user || !req.user.role) {
+            return res.status(401).json({ error: 'Unauthorized: Missing or invalid session role' });
+        }
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                error: `Forbidden: Access restricted. Required role: ${allowedRoles.join(' or ')}`
+            });
+        }
+        next();
+    };
 };
 
 app.use('/api', requireAuth);
@@ -136,14 +196,74 @@ app.use((req, res, next) => {
 
 const { Pool } = require('pg');
 
-// Initialize PostgreSQL Pool
+// Initialize PostgreSQL Pool (optimized for Vercel Serverless + Neon)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    max: process.env.PG_MAX_POOL_SIZE ? parseInt(process.env.PG_MAX_POOL_SIZE) : (process.env.VERCEL ? 3 : 10),
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    ssl: (process.env.NODE_ENV === 'production' || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('neon.tech'))) ? { rejectUnauthorized: false } : false
+});
+
+pool.on('connect', (client) => {
+    client.on('error', (err) => {
+        console.warn('PostgreSQL client error (handled):', err.message);
+    });
 });
 
 pool.on('error', (err) => {
     console.warn('Unexpected error on idle PostgreSQL client (auto-reconnected):', err.message);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception caught:', err);
+});
+
+// ── Public Uptime & Health Check Endpoint (Phase 4C) ────────────────────────
+app.get(['/api/health', '/health'], async (req, res) => {
+    const timeoutMs = process.env.HEALTH_CHECK_TIMEOUT_MS ? parseInt(process.env.HEALTH_CHECK_TIMEOUT_MS) : 5000;
+    let dbStatus = 'disconnected';
+    let latencyMs = null;
+    const startTime = Date.now();
+
+    try {
+        const dbPromise = pool.query('SELECT 1 AS alive');
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Database ping timed out')), timeoutMs)
+        );
+
+        await Promise.race([dbPromise, timeoutPromise]);
+        latencyMs = Date.now() - startTime;
+        dbStatus = 'connected';
+
+        return res.status(200).json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime_seconds: Math.floor(process.uptime()),
+            database: {
+                status: dbStatus,
+                latency_ms: latencyMs
+            }
+        });
+    } catch (err) {
+        const elapsed = Date.now() - startTime;
+        console.warn('[Health Check Failed]:', err.message);
+
+        return res.status(503).json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            uptime_seconds: Math.floor(process.uptime()),
+            database: {
+                status: 'disconnected',
+                latency_ms: elapsed,
+                error: 'Database unavailable or timed out'
+            }
+        });
+    }
 });
 
 // Helper to initialize the DB table
@@ -169,6 +289,119 @@ async function insertAuditLog(client, { tableName, recordId, action, oldData, ne
         req.method,
         req.originalUrl || req.url
     ]);
+}
+
+// ── Persistent Database-Backed Idempotency Engine ───────────────────────────
+async function handleIdempotencyBegin(client, endpoint, key) {
+    if (!key || typeof key !== 'string' || !key.trim()) return null;
+    const cleanKey = key.trim();
+
+    // 1. Attempt to insert 'PROCESSING' state
+    const insRes = await client.query(
+        `INSERT INTO idempotency_keys (endpoint, key, status, created_at, updated_at)
+         VALUES ($1, $2, 'PROCESSING', NOW(), NOW())
+         ON CONFLICT (endpoint, key) DO NOTHING
+         RETURNING status`,
+        [endpoint, cleanKey]
+    );
+
+    if (insRes.rows.length > 0) {
+        // Thread 1: Successfully registered PROCESSING state
+        return { cleanKey, isNew: true };
+    }
+
+    // 2. Row exists. Lock the row with FOR UPDATE.
+    // Concurrent Thread 2 will BLOCK here until Thread 1 commits or rolls back!
+    const existingRes = await client.query(
+        `SELECT status, document_id, response_code, response_body
+         FROM idempotency_keys
+         WHERE endpoint = $1 AND key = $2
+         FOR UPDATE`,
+        [endpoint, cleanKey]
+    );
+
+    if (existingRes.rows.length === 0) {
+        // Thread 1 rolled back completely, retry insert
+        const retryIns = await client.query(
+            `INSERT INTO idempotency_keys (endpoint, key, status, created_at, updated_at)
+             VALUES ($1, $2, 'PROCESSING', NOW(), NOW())
+             ON CONFLICT (endpoint, key) DO NOTHING
+             RETURNING status`,
+            [endpoint, cleanKey]
+        );
+        if (retryIns.rows.length > 0) {
+            return { cleanKey, isNew: true };
+        }
+    }
+
+    const existing = existingRes.rows[0];
+    if (existing && existing.status === 'COMPLETED') {
+        return {
+            cleanKey,
+            isNew: false,
+            responseCode: existing.response_code || 200,
+            responseBody: existing.response_body
+        };
+    }
+
+    if (existing && existing.status === 'FAILED') {
+        // Previous attempt failed, allow retry by updating status to PROCESSING
+        await client.query(
+            `UPDATE idempotency_keys
+             SET status = 'PROCESSING', updated_at = NOW()
+             WHERE endpoint = $1 AND key = $2`,
+            [endpoint, cleanKey]
+        );
+        return { cleanKey, isNew: true };
+    }
+
+    throw new Error('A transaction with this idempotency key is already in progress');
+}
+
+async function handleIdempotencyCommit(client, endpoint, cleanKey, documentId, responseCode, responseBody) {
+    if (!cleanKey) return;
+    await client.query(
+        `UPDATE idempotency_keys
+         SET status = 'COMPLETED',
+             document_id = $1,
+             response_code = $2,
+             response_body = $3,
+             updated_at = NOW()
+         WHERE endpoint = $4 AND key = $5`,
+        [documentId, responseCode, JSON.stringify(responseBody), endpoint, cleanKey]
+    );
+}
+
+async function handleIdempotencyFail(client, endpoint, cleanKey) {
+    if (!cleanKey) return;
+    try {
+        await client.query(
+            `UPDATE idempotency_keys
+             SET status = 'FAILED', updated_at = NOW()
+             WHERE endpoint = $1 AND key = $2 AND status = 'PROCESSING'`,
+            [endpoint, cleanKey]
+        );
+    } catch (err) {
+        // Silently ignore errors during fail cleanup
+    }
+}
+
+async function safeRollback(client) {
+    if (!client) return;
+    try {
+        await client.query('ROLLBACK');
+    } catch (_) {
+        // Suppress rollback errors if connection was lost or already rolled back
+    }
+}
+
+function safeRelease(client) {
+    if (!client) return;
+    try {
+        client.release();
+    } catch (_) {
+        // Suppress release errors if client was already destroyed
+    }
 }
 
 function parseDateForDB(dateVal) {
@@ -473,6 +706,9 @@ async function initDB() {
             CREATE INDEX IF NOT EXISTS idx_active_sessions_hash ON active_sessions(token_hash);
 
             -- Phase 2 Database Migrations (Audit Fields and Capture Snapshots)
+            ALTER TABLE customers ADD COLUMN IF NOT EXISTS store_credit_balance NUMERIC NOT NULL DEFAULT 0;
+            ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_advance_balance NUMERIC NOT NULL DEFAULT 0;
+
             ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS store_credit_applied NUMERIC NULL;
             ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE';
             ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
@@ -480,12 +716,14 @@ async function initDB() {
             ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
             ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+            ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS invoice_id TEXT;
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS receivable_reduction NUMERIC NULL;
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE';
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
             ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+            ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
             ALTER TABLE purchase_returns ADD COLUMN IF NOT EXISTS payable_reduction NUMERIC NULL;
             ALTER TABLE purchase_returns ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE';
@@ -547,6 +785,29 @@ async function initDB() {
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
 
+            -- Audit Logging Table & Indexes
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                old_data JSONB,
+                new_data JSONB,
+                performed_by_id TEXT,
+                performed_by_name TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                transaction_id UUID NOT NULL,
+                request_method TEXT,
+                endpoint TEXT,
+                performed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_record_id ON audit_logs(record_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_at ON audit_logs(performed_at);
+
             -- 🚀 Performance Indexes for Sub-millisecond Queries
             CREATE INDEX IF NOT EXISTS idx_vouchers_date_status ON vouchers(date, status);
             CREATE INDEX IF NOT EXISTS idx_vouchers_type ON vouchers(voucher_type);
@@ -561,8 +822,43 @@ async function initDB() {
             CREATE INDEX IF NOT EXISTS idx_items_lookup ON items(code, name, category_name);
             CREATE INDEX IF NOT EXISTS idx_customers_lookup ON customers(phone_number, customer_name);
             CREATE INDEX IF NOT EXISTS idx_vendors_lookup ON vendors(phone_number, vendor_name);
+
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR(64) PRIMARY KEY,
+                username VARCHAR(64) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(32) NOT NULL DEFAULT 'CASHIER',
+                full_name VARCHAR(128),
+                status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                ip_address VARCHAR(64) PRIMARY KEY,
+                failed_count INTEGER NOT NULL DEFAULT 1,
+                first_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                locked_until TIMESTAMPTZ
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_login_attempts_locked_until ON login_attempts(locked_until);
+
+            ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
+            ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS role VARCHAR(32);
         `);
         
+        // Seed default admin account if configured (parameterized to prevent SQL injection or leakage)
+        if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD_HASH) {
+            await pool.query(`
+                INSERT INTO users (id, username, password_hash, role, full_name, status)
+                VALUES ($1, $2, $3, 'ADMIN', 'System Administrator', 'ACTIVE')
+                ON CONFLICT (username) DO NOTHING
+            `, ['usr_admin_default', process.env.ADMIN_USERNAME, process.env.ADMIN_PASSWORD_HASH]);
+        }
+
         const res = await pool.query('SELECT COUNT(*) FROM store');
         if (parseInt(res.rows[0].count) === 0) {
             const defaultData = { categories: [], units: [], items: [], customers: [], sales: [], invoice_counter: 1, payments: [], payment_counter: 1, tagSettings: {}, vendors: [], purchase_invoices: [] };
@@ -575,13 +871,36 @@ async function initDB() {
 }
 initDB();
 
-// Serverless explicitly awaitable init route
+// Error Sanitization Helper: Never expose PostgreSQL error strings, SQL, table names, constraint names, stack traces, credentials or connection strings
+function sanitizeClientError(err, defaultMsg = 'Internal server error') {
+    if (!err) return defaultMsg;
+    const msg = typeof err === 'string' ? err : (err.message || defaultMsg);
+    const isDbInternal = /relation ".*"|table ".*"|constraint ".*"|column ".*"|syntax error at|SELECT|INSERT INTO|UPDATE |DELETE FROM|violates.*constraint|deadlock detected/i.test(msg);
+    if (isDbInternal || msg.includes('connection') || msg.includes('password') || msg.includes('secret') || msg.includes('DATABASE_URL')) {
+        return 'A database error occurred. Please contact your system administrator.';
+    }
+    return msg;
+}
+
+// Secure Error Helper (prevents detail leakage to client)
+function sendError(res, err, friendlyMessage = 'Internal server error') {
+    console.error('SERVER ERROR:', err);
+    res.status(500).json({ error: sanitizeClientError(err, friendlyMessage) });
+}
+
+// Serverless explicitly awaitable init route (Disabled in production)
 app.get('/api/init-db', async (req, res) => {
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ error: 'Endpoint disabled in production' });
+    }
     try {
+        if (req.user && req.user.role !== 'ADMIN' && req.username !== (process.env.ADMIN_USERNAME || 'admin') && req.username !== 'System') {
+            return res.status(403).json({ error: 'Forbidden: Admin authorization required' });
+        }
         await initDB();
         res.send('Database tables initialized successfully! You can now close this tab and log in.');
     } catch (e) {
-        res.status(500).send('Database initialization failed: ' + e.message);
+        res.status(500).send('Database initialization failed: ' + sanitizeClientError(e));
     }
 });
 
@@ -607,73 +926,128 @@ async function writeDB(data) {
     }
 }
 
-// Secure Error Helper (prevents detail leakage to client)
-function sendError(res, err, friendlyMessage = 'Internal server error') {
-    console.error('SERVER ERROR:', err);
-    res.status(500).json({ error: friendlyMessage });
-}
-
-// API Endpoints
-
-const loginAttempts = new Map();
-
-const loginRateLimiter = (req, res, next) => {
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const now = Date.now();
-    const windowMs = 15 * 60 * 1000;
-    const limit = 5;
-
-    const attempts = loginAttempts.get(ip) || { count: 0, windowStart: now };
-
-    if (now - attempts.windowStart > windowMs) {
-        attempts.count = 0;
-        attempts.windowStart = now;
+// Persistent Database-Backed Login Rate Limiter Middleware
+const loginRateLimiter = async (req, res, next) => {
+    // Behind Vercel edge proxy, x-real-ip cannot be spoofed by clients; otherwise use trusted Express req.ip
+    const clientIp = (process.env.VERCEL && req.headers['x-real-ip'])
+        ? req.headers['x-real-ip']
+        : (req.ip || req.socket?.remoteAddress || 'unknown');
+    try {
+        const checkRes = await pool.query(
+            "SELECT failed_count, first_failed_at, locked_until FROM login_attempts WHERE ip_address = $1",
+            [clientIp]
+        );
+        if (checkRes.rows.length > 0) {
+            const row = checkRes.rows[0];
+            if (row.locked_until && new Date(row.locked_until) > new Date()) {
+                const remainingMinutes = Math.max(1, Math.ceil((new Date(row.locked_until) - new Date()) / 60000));
+                return res.status(429).json({
+                    error: `Too many login attempts. Please try again in ${remainingMinutes} minute(s).`
+                });
+            }
+        }
+        req.clientIp = clientIp;
+        next();
+    } catch (err) {
+        console.error('Rate limiter database check error:', err);
+        req.clientIp = clientIp;
+        next();
     }
-
-    if (attempts.count >= limit) {
-        return res.status(429).json({ error: 'Too many login attempts. Please try again in 15 minutes.' });
-    }
-
-    req.attemptsObj = attempts;
-    req.clientIp = ip;
-    next();
 };
 
 // Authentication Login API
 app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
-    const { username, password } = req.body;
-    
-    const isValidUser = (username === process.env.ADMIN_USERNAME);
-    const isValidPass = isValidUser && bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH);
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
 
-    if (isValidUser && isValidPass) {
-        // Reset rate limit attempts on successful login
-        loginAttempts.delete(req.clientIp);
+    try {
+        let user = null;
+        let isValidPass = false;
 
-        const token = crypto.randomBytes(32).toString('hex');
-        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-        const sessionId = generateId();
-        
-        // 8 hours expiry
-        const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        // 1. Query users table
+        const userRes = await pool.query(
+            "SELECT id, username, password_hash, role, full_name, status FROM users WHERE username = $1",
+            [username]
+        );
 
-        try {
-            await pool.query(
-                "INSERT INTO active_sessions (id, token_hash, username, expires_at) VALUES ($1, $2, $3, $4)",
-                [sessionId, tokenHash, username, expiresAt]
-            );
-            res.json({ success: true, token });
-        } catch (err) {
-            console.error('Session persistence failed:', err);
-            res.status(500).json({ error: 'Internal Server Error' });
+        if (userRes.rows.length > 0) {
+            const dbUser = userRes.rows[0];
+            if (dbUser.status !== 'ACTIVE') {
+                return res.status(401).json({ error: 'Account is deactivated' });
+            }
+            isValidPass = bcrypt.compareSync(password, dbUser.password_hash);
+            if (isValidPass) {
+                user = dbUser;
+            }
+        } else if (username === process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD_HASH) {
+            // Fallback for primary environment admin account
+            isValidPass = bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH);
+            if (isValidPass) {
+                user = {
+                    id: 'usr_admin_default',
+                    username: process.env.ADMIN_USERNAME,
+                    role: 'ADMIN',
+                    full_name: 'System Administrator'
+                };
+            }
         }
-    } else {
-        // Increment rate limit attempts
-        const attempts = req.attemptsObj;
-        attempts.count += 1;
-        loginAttempts.set(req.clientIp, attempts);
 
-        res.status(401).json({ error: 'Invalid username or password' });
+        if (user && isValidPass) {
+            // Reset rate limit attempts on successful login
+            pool.query("DELETE FROM login_attempts WHERE ip_address = $1", [req.clientIp]).catch(() => {});
+
+            const token = crypto.randomBytes(32).toString('hex');
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            const sessionId = generateId();
+            
+            // Fixed 8 hours expiry
+            const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+
+            await pool.query(
+                "INSERT INTO active_sessions (id, token_hash, username, user_id, role, expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
+                [sessionId, tokenHash, user.username, user.id, user.role, expiresAt]
+            );
+
+            return res.json({
+                success: true,
+                token,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    role: user.role,
+                    fullName: user.full_name
+                }
+            });
+        } else {
+            // Increment rate limit attempts atomically
+            await pool.query(`
+                INSERT INTO login_attempts (ip_address, failed_count, first_failed_at, last_failed_at, locked_until)
+                VALUES ($1, 1, NOW(), NOW(), NULL)
+                ON CONFLICT (ip_address) DO UPDATE SET
+                    failed_count = CASE 
+                        WHEN login_attempts.locked_until IS NOT NULL AND login_attempts.locked_until <= NOW() THEN 1
+                        WHEN NOW() - login_attempts.first_failed_at > INTERVAL '15 minutes' THEN 1
+                        ELSE login_attempts.failed_count + 1
+                    END,
+                    first_failed_at = CASE 
+                        WHEN login_attempts.locked_until IS NOT NULL AND login_attempts.locked_until <= NOW() THEN NOW()
+                        WHEN NOW() - login_attempts.first_failed_at > INTERVAL '15 minutes' THEN NOW()
+                        ELSE login_attempts.first_failed_at
+                    END,
+                    last_failed_at = NOW(),
+                    locked_until = CASE 
+                        WHEN (login_attempts.failed_count + 1) >= 5 THEN NOW() + INTERVAL '15 minutes'
+                        ELSE NULL
+                    END
+            `, [req.clientIp]);
+
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+    } catch (err) {
+        console.error('Login processing error:', err);
+        return res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
@@ -697,8 +1071,100 @@ app.post('/api/auth/logout', async (req, res) => {
     }
 });
 
+// User Management Endpoints (Admin Only)
+app.get('/api/users', requireRole(['ADMIN']), async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, username, role, full_name as "fullName", status, created_at as "createdAt"
+            FROM users
+            ORDER BY username ASC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        sendError(res, err, 'Failed to fetch users');
+    }
+});
+
+app.post('/api/users', requireRole(['ADMIN']), async (req, res) => {
+    const { username, password, role, fullName } = req.body || {};
+    if (!username || !password || !role) {
+        return res.status(400).json({ error: 'Username, password, and role are required' });
+    }
+    const validRoles = ['ADMIN', 'ACCOUNTANT', 'CASHIER'];
+    if (!validRoles.includes(role.toUpperCase())) {
+        return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+    }
+    try {
+        const passwordHash = bcrypt.hashSync(password, 10);
+        const newId = generateId();
+        const result = await pool.query(`
+            INSERT INTO users (id, username, password_hash, role, full_name, status)
+            VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+            RETURNING id, username, role, full_name as "fullName", status, created_at as "createdAt"
+        `, [newId, username.trim(), passwordHash, role.toUpperCase(), fullName || '']);
+        res.json({ success: true, user: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+        sendError(res, err, 'Failed to create user');
+    }
+});
+
+app.patch('/api/users/:id', requireRole(['ADMIN']), async (req, res) => {
+    const userId = req.params.id;
+    const { role, status, fullName, password } = req.body || {};
+    try {
+        const updates = [];
+        const values = [];
+        let idx = 1;
+
+        if (role) {
+            const validRoles = ['ADMIN', 'ACCOUNTANT', 'CASHIER'];
+            if (!validRoles.includes(role.toUpperCase())) {
+                return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+            }
+            updates.push(`role = $${idx++}`);
+            values.push(role.toUpperCase());
+        }
+        if (status) {
+            const validStatuses = ['ACTIVE', 'INACTIVE'];
+            if (!validStatuses.includes(status.toUpperCase())) {
+                return res.status(400).json({ error: 'Status must be ACTIVE or INACTIVE' });
+            }
+            updates.push(`status = $${idx++}`);
+            values.push(status.toUpperCase());
+        }
+        if (fullName !== undefined) {
+            updates.push(`full_name = $${idx++}`);
+            values.push(fullName);
+        }
+        if (password) {
+            const passwordHash = bcrypt.hashSync(password, 10);
+            updates.push(`password_hash = $${idx++}`);
+            values.push(passwordHash);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No fields provided for update' });
+        }
+
+        updates.push(`updated_at = NOW()`);
+        values.push(userId);
+        const queryStr = `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, username, role, full_name as "fullName", status, updated_at as "updatedAt"`;
+        const result = await pool.query(queryStr, values);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json({ success: true, user: result.rows[0] });
+    } catch (err) {
+        sendError(res, err, 'Failed to update user');
+    }
+});
+
+
 // Core Settings / Counters (PostgreSQL backed with sequence fallback)
-app.get('/api/invoice-counter', async (req, res) => {
+app.get('/api/invoice-counter', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'sales_invoice' AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -713,7 +1179,7 @@ app.get('/api/invoice-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/invoice-counter', async (req, res) => {
+app.post('/api/invoice-counter', requireRole(['ADMIN']), async (req, res) => {
     try {
         const val = parseInt(req.body.counter) || 1;
         await pool.query(
@@ -723,11 +1189,11 @@ app.post('/api/invoice-counter', async (req, res) => {
         const db = await readDB(); db.invoice_counter = val; await writeDB(db);
         res.json({ success: true, counter: val });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: sanitizeClientError(e) });
     }
 });
 
-app.get('/api/return-counter', async (req, res) => {
+app.get('/api/return-counter', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'sales_return' AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -742,7 +1208,7 @@ app.get('/api/return-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/return-counter', async (req, res) => {
+app.post('/api/return-counter', requireRole(['ADMIN']), async (req, res) => {
     try {
         const val = parseInt(req.body.counter) || 1;
         await pool.query(
@@ -752,11 +1218,11 @@ app.post('/api/return-counter', async (req, res) => {
         const db = await readDB(); db.return_counter = val; await writeDB(db);
         res.json({ success: true, counter: val });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: sanitizeClientError(e) });
     }
 });
 
-app.get('/api/pret-counter', async (req, res) => {
+app.get('/api/pret-counter', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'purchase_return' AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -771,7 +1237,7 @@ app.get('/api/pret-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/pret-counter', async (req, res) => {
+app.post('/api/pret-counter', requireRole(['ADMIN']), async (req, res) => {
     try {
         const val = parseInt(req.body.counter) || 1;
         await pool.query(
@@ -781,11 +1247,11 @@ app.post('/api/pret-counter', async (req, res) => {
         const db = await readDB(); db.pret_counter = val; await writeDB(db);
         res.json({ success: true, counter: val });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: sanitizeClientError(e) });
     }
 });
 
-app.get('/api/payment-counter', async (req, res) => {
+app.get('/api/payment-counter', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE (document_type = 'customer_receipt' OR prefix = 'AR') AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -800,13 +1266,13 @@ app.get('/api/payment-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/payment-counter', async (req, res) => {
+app.post('/api/payment-counter', requireRole(['ADMIN']), async (req, res) => {
     const val = parseInt(req.body.counter) || 1;
     const db = await readDB(); db.payment_counter = val; await writeDB(db);
     res.json({ success: true, counter: val });
 });
 
-app.get('/api/pi-counter', async (req, res) => {
+app.get('/api/pi-counter', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE document_type = 'purchase_invoice' AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -821,13 +1287,13 @@ app.get('/api/pi-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/pi-counter', async (req, res) => {
+app.post('/api/pi-counter', requireRole(['ADMIN']), async (req, res) => {
     const val = parseInt(req.body.counter) || 1;
     const db = await readDB(); db.pi_counter = val; await writeDB(db);
     res.json({ success: true, counter: val });
 });
 
-app.get('/api/vendor-payment-counter', async (req, res) => {
+app.get('/api/vendor-payment-counter', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const seqRes = await pool.query("SELECT current_number FROM document_sequences WHERE (document_type = 'vendor_payment' OR prefix = 'PMT') AND financial_year = 'ALL'");
         const seqVal = seqRes.rows.length > 0 ? parseInt(seqRes.rows[0].current_number) || 0 : 0;
@@ -842,20 +1308,21 @@ app.get('/api/vendor-payment-counter', async (req, res) => {
         res.json({ counter: 1 });
     }
 });
-app.post('/api/vendor-payment-counter', async (req, res) => {
+app.post('/api/vendor-payment-counter', requireRole(['ADMIN']), async (req, res) => {
     const val = parseInt(req.body.counter) || 1;
     const db = await readDB(); db.vendor_payment_counter = val; await writeDB(db);
     res.json({ success: true, counter: val });
 });
 
-app.get('/api/settings/tag', async (req, res) => res.json((await readDB()).tagSettings || {}));
-app.post('/api/settings/tag', async (req, res) => {
+app.get('/api/settings/tag', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => res.json((await readDB()).tagSettings || {}));
+app.post('/api/settings/tag', requireRole(['ADMIN']), async (req, res) => {
     const db = await readDB(); db.tagSettings = req.body; await writeDB(db);
     res.json({ success: true });
 });
 
+
 // ───────── VOUCHERS API ─────────
-app.get('/api/voucher-counter', async (req, res) => {
+app.get('/api/voucher-counter', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const pmtCount = await pool.query("SELECT COUNT(*) FROM vouchers WHERE voucher_type = 'Payment' AND status != 'DELETED'");
         const recCount = await pool.query("SELECT COUNT(*) FROM vouchers WHERE voucher_type = 'Receipt' AND status != 'DELETED'");
@@ -870,7 +1337,7 @@ app.get('/api/voucher-counter', async (req, res) => {
     }
 });
 
-app.get('/api/vouchers', async (req, res) => {
+app.get('/api/vouchers', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, voucher_no as "voucherNo", voucher_type as "voucherType",
@@ -897,12 +1364,12 @@ app.get('/api/vouchers', async (req, res) => {
             const db = await readDB();
             res.json(db.vouchers || []);
         } catch (err) {
-            res.json([]);
+            sendError(res, err, 'Failed to fetch vouchers');
         }
     }
 });
 
-app.get('/api/vouchers/:id', async (req, res) => {
+app.get('/api/vouchers/:id', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, voucher_no as "voucherNo", voucher_type as "voucherType",
@@ -928,7 +1395,7 @@ app.get('/api/vouchers/:id', async (req, res) => {
     }
 });
 
-app.post('/api/vouchers', async (req, res) => {
+app.post('/api/vouchers', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const id = `vch_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
         const v = req.body;
@@ -989,7 +1456,7 @@ app.post('/api/vouchers', async (req, res) => {
     }
 });
 
-app.put('/api/vouchers/:id', async (req, res) => {
+app.put('/api/vouchers/:id', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const id = req.params.id;
         const v = req.body;
@@ -1049,7 +1516,7 @@ app.put('/api/vouchers/:id', async (req, res) => {
     }
 });
 
-app.delete('/api/vouchers/:id', async (req, res) => {
+app.delete('/api/vouchers/:id', requireRole(['ADMIN']), async (req, res) => {
     try {
         const id = req.params.id;
         await pool.query("UPDATE vouchers SET status = 'DELETED', updated_at = NOW() WHERE id = $1", [id]);
@@ -1067,7 +1534,7 @@ app.delete('/api/vouchers/:id', async (req, res) => {
 });
 
 // Expense / Income Categories API
-app.get('/api/expense-categories', async (req, res) => {
+app.get('/api/expense-categories', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name, type FROM expense_categories ORDER BY name ASC');
         if (result.rows.length === 0) {
@@ -1113,7 +1580,7 @@ app.get('/api/expense-categories', async (req, res) => {
     }
 });
 
-app.post('/api/expense-categories', async (req, res) => {
+app.post('/api/expense-categories', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const { name, type } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
@@ -1125,7 +1592,7 @@ app.post('/api/expense-categories', async (req, res) => {
     }
 });
 
-app.get('/api/payments', async (req, res) => {
+app.get('/api/payments', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT cr.id, cr.receipt_no as "arNo", cr.date, COALESCE(c.customer_name, 'Walk In Customer') as "customerName", 
@@ -1183,18 +1650,17 @@ app.get('/api/payments', async (req, res) => {
         const legacyPayments = db.payments || [];
         res.json([...dbReceipts, ...legacyPayments]);
     } catch (e) {
-        console.error(e);
-        res.json([]);
+        sendError(res, e, 'Failed to fetch payments');
     }
 });
-app.post('/api/payments', async (req, res) => {
+app.post('/api/payments', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
     });
 });
 
-app.get('/api/vendor-payments', async (req, res) => {
+app.get('/api/vendor-payments', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT vp.id, vp.payment_no as "pmtNo", vp.date, v.vendor_name as "vendorName",
@@ -1251,11 +1717,10 @@ app.get('/api/vendor-payments', async (req, res) => {
         const legacyPayments = db.vendor_payments || [];
         res.json([...dbPayments, ...legacyPayments]);
     } catch (e) {
-        console.error(e);
-        res.json([]);
+        sendError(res, e, 'Failed to fetch vendor payments');
     }
 });
-app.post('/api/vendor-payments', async (req, res) => {
+app.post('/api/vendor-payments', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
@@ -1268,23 +1733,60 @@ function generateId() {
 }
 
 // 1. Categories
-app.get('/api/categories', async (req, res) => {
+app.get('/api/categories', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
-        const result = await pool.query('SELECT name FROM categories');
+        const result = await pool.query('SELECT id, name FROM categories ORDER BY name ASC');
         res.json(result.rows);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch categories');
     }
 });
-app.post('/api/categories', async (req, res) => {
+app.post('/api/categories', requireRole(['ADMIN']), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query('DELETE FROM categories');
         const categories = req.body;
-        for (let c of categories) {
-            await client.query('INSERT INTO categories (id, name) VALUES ($1, $2)', [generateId(), c.name]);
+        if (!Array.isArray(categories)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Payload must be an array of categories' });
         }
+
+        const existingRes = await client.query('SELECT id, name FROM categories');
+        const existingByName = new Map(existingRes.rows.map(r => [r.name.trim().toLowerCase(), r]));
+        const existingById = new Map(existingRes.rows.map(r => [r.id, r]));
+
+        const handledIds = new Set();
+        for (let rawCat of categories) {
+            const c = typeof rawCat === 'string' ? { name: rawCat } : (rawCat || {});
+            const name = (c.name || '').trim();
+            if (!name) continue;
+
+            if (c.id && existingById.has(c.id)) {
+                await client.query('UPDATE categories SET name = $1 WHERE id = $2', [name, c.id]);
+                handledIds.add(c.id);
+            } else if (existingByName.has(name.toLowerCase())) {
+                const existing = existingByName.get(name.toLowerCase());
+                handledIds.add(existing.id);
+            } else {
+                const newId = c.id || generateId();
+                await client.query('INSERT INTO categories (id, name) VALUES ($1, $2)', [newId, name]);
+                handledIds.add(newId);
+            }
+        }
+
+        // Safe deletion: only delete categories that are NOT referenced by any inventory items
+        for (const existing of existingRes.rows) {
+            if (!handledIds.has(existing.id)) {
+                const checkUsage = await client.query(
+                    'SELECT 1 FROM items WHERE category_name = $1 OR category = $1 LIMIT 1',
+                    [existing.name]
+                );
+                if (checkUsage.rows.length === 0) {
+                    await client.query('DELETE FROM categories WHERE id = $1', [existing.id]);
+                }
+            }
+        }
+
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (e) {
@@ -1296,24 +1798,73 @@ app.post('/api/categories', async (req, res) => {
 });
 
 // 2. Units
-app.get('/api/units', async (req, res) => {
+app.get('/api/units', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
-        const result = await pool.query('SELECT name, unit_prefix as "unitPrefix", accept_decimal as "acceptDecimal" FROM units');
+        const result = await pool.query('SELECT id, name, unit_prefix as "unitPrefix", accept_decimal as "acceptDecimal" FROM units ORDER BY name ASC');
         res.json(result.rows);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch units');
     }
 });
-app.post('/api/units', async (req, res) => {
+app.post('/api/units', requireRole(['ADMIN']), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query('DELETE FROM units');
         const units = req.body;
-        for (let u of units) {
-            await client.query('INSERT INTO units (id, name, unit_prefix, accept_decimal) VALUES ($1, $2, $3, $4)', 
-                [generateId(), u.name, u.unitPrefix || '', u.acceptDecimal === true]);
+        if (!Array.isArray(units)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Payload must be an array of units' });
         }
+
+        const existingRes = await client.query('SELECT id, name, unit_prefix, accept_decimal FROM units');
+        const existingByName = new Map(existingRes.rows.map(r => [r.name.trim().toLowerCase(), r]));
+        const existingById = new Map(existingRes.rows.map(r => [r.id, r]));
+
+        const handledIds = new Set();
+        for (let rawUnit of units) {
+            const u = typeof rawUnit === 'string' ? { name: rawUnit } : (rawUnit || {});
+            const name = (u.name || '').trim();
+            if (!name) continue;
+
+            const unitPrefix = u.unitPrefix || '';
+            const acceptDecimal = u.acceptDecimal === true;
+
+            if (u.id && existingById.has(u.id)) {
+                await client.query(
+                    'UPDATE units SET name = $1, unit_prefix = $2, accept_decimal = $3 WHERE id = $4',
+                    [name, unitPrefix, acceptDecimal, u.id]
+                );
+                handledIds.add(u.id);
+            } else if (existingByName.has(name.toLowerCase())) {
+                const existing = existingByName.get(name.toLowerCase());
+                await client.query(
+                    'UPDATE units SET unit_prefix = $1, accept_decimal = $2 WHERE id = $3',
+                    [unitPrefix, acceptDecimal, existing.id]
+                );
+                handledIds.add(existing.id);
+            } else {
+                const newId = u.id || generateId();
+                await client.query(
+                    'INSERT INTO units (id, name, unit_prefix, accept_decimal) VALUES ($1, $2, $3, $4)',
+                    [newId, name, unitPrefix, acceptDecimal]
+                );
+                handledIds.add(newId);
+            }
+        }
+
+        // Safe deletion: only delete units that are NOT referenced by any inventory items
+        for (const existing of existingRes.rows) {
+            if (!handledIds.has(existing.id)) {
+                const checkUsage = await client.query(
+                    'SELECT 1 FROM items WHERE unit_name = $1 OR unit = $1 LIMIT 1',
+                    [existing.name]
+                );
+                if (checkUsage.rows.length === 0) {
+                    await client.query('DELETE FROM units WHERE id = $1', [existing.id]);
+                }
+            }
+        }
+
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (e) {
@@ -1325,7 +1876,7 @@ app.post('/api/units', async (req, res) => {
 });
 
 // 3. Items
-app.get('/api/items', async (req, res) => {
+app.get('/api/items', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, code, name, category_name as "category", unit_name as "unit", hsn, gst_rate as "gstRate", 
@@ -1337,18 +1888,21 @@ app.get('/api/items', async (req, res) => {
         `);
         res.json(result.rows);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch items');
     }
 });
-app.post('/api/items', async (req, res) => {
+app.post('/api/items', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const items = req.body;
-        const incomingCodes = [];
+        const rawItems = req.body;
+        const items = Array.isArray(rawItems) ? rawItems : (rawItems ? [rawItems] : []);
+        // Standardize multi-item processing order to prevent concurrent transaction deadlocks
+        items.sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
         
         for (let i of items) {
-            incomingCodes.push(i.code);
+            const isStockAdjustment = i.isStockAdjustment === true;
             await client.query(`
                 INSERT INTO items (
                     id, code, name, category_name, unit_name, hsn, gst_rate, cess, 
@@ -1360,21 +1914,17 @@ app.post('/api/items', async (req, res) => {
                     name = EXCLUDED.name, category_name = EXCLUDED.category_name, unit_name = EXCLUDED.unit_name, hsn = EXCLUDED.hsn, 
                     gst_rate = EXCLUDED.gst_rate, cess = EXCLUDED.cess, tax_type = EXCLUDED.tax_type, tax_amount = EXCLUDED.tax_amount, 
                     purchase_price = EXCLUDED.purchase_price, selling_price = EXCLUDED.selling_price, mrp = EXCLUDED.mrp, 
-                    stock = EXCLUDED.stock, minimum_stock = EXCLUDED.minimum_stock, location = EXCLUDED.location, 
+                    minimum_stock = EXCLUDED.minimum_stock, location = EXCLUDED.location, 
                     purchase_tax_type = EXCLUDED.purchase_tax_type, selling_tax_type = EXCLUDED.selling_tax_type, 
-                    conversions = EXCLUDED.conversions, images = EXCLUDED.images
+                    conversions = EXCLUDED.conversions, images = EXCLUDED.images,
+                    stock = CASE WHEN $21::boolean IS TRUE THEN EXCLUDED.stock ELSE items.stock END
             `, [
                 i.id || generateId(), i.code, i.name, i.category || null, i.unit || null, i.hsn || '', i.gstRate || '', parseFloat(i.cess) || 0,
                 i.taxType || '', parseFloat(i.taxAmount) || 0, parseFloat(i.purchasePrice || i.purchaseAmount) || 0, parseFloat(i.sellingPrice || i.sellingAmount) || 0,
                 parseFloat(i.mrp) || 0, parseFloat(i.stock) || 0, parseFloat(i.minimumStock) || 0, i.itemLocation || '',
-                i.purchaseTaxType || '', i.sellingTaxType || '', JSON.stringify(i.conversions || []), JSON.stringify(i.images || [])
+                i.purchaseTaxType || '', i.sellingTaxType || '', JSON.stringify(i.conversions || []), JSON.stringify(i.images || []),
+                isStockAdjustment
             ]);
-        }
-        
-        if (incomingCodes.length > 0) {
-            await client.query('DELETE FROM items WHERE NOT (code = ANY($1))', [incomingCodes]);
-        } else {
-            await client.query('DELETE FROM items');
         }
         
         await client.query('COMMIT');
@@ -1388,7 +1938,7 @@ app.post('/api/items', async (req, res) => {
 });
 
 // 4. Vendors
-app.get('/api/vendors', async (req, res) => {
+app.get('/api/vendors', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, vendor_name as "vendorName", contact_person as "contactPerson", phone_number as "phoneNumber", email, gst_treatment as "gstTreatment", 
@@ -1414,19 +1964,18 @@ app.get('/api/vendors', async (req, res) => {
         });
         res.json(vendors);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch vendors');
     }
 });
-app.post('/api/vendors', async (req, res) => {
+app.post('/api/vendors', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const vendors = req.body;
-        const incomingIds = [];
+        const rawVendors = req.body;
+        const vendors = Array.isArray(rawVendors) ? rawVendors : (rawVendors ? [rawVendors] : []);
         
         for (let v of vendors) {
             const vid = v.id || generateId();
-            incomingIds.push(vid);
             let parsedDate = v.asOfDate;
             if (parsedDate && parsedDate.includes('/')) {
                const parts = parsedDate.split('/');
@@ -1446,26 +1995,30 @@ app.post('/api/vendors', async (req, res) => {
                     gst_treatment = EXCLUDED.gst_treatment, gstin = EXCLUDED.gstin, pan_number = EXCLUDED.pan_number, opening_balance = EXCLUDED.opening_balance, 
                     as_of_date = EXCLUDED.as_of_date, bill_address = EXCLUDED.bill_address, bill_city = EXCLUDED.bill_city, bill_state = EXCLUDED.bill_state, 
                     bill_pincode = EXCLUDED.bill_pincode, bill_country = EXCLUDED.bill_country, ship_address = EXCLUDED.ship_address, ship_city = EXCLUDED.ship_city, 
-                    ship_state = EXCLUDED.ship_state, ship_pincode = EXCLUDED.ship_pincode, ship_country = EXCLUDED.ship_country, pending_to_pay = EXCLUDED.pending_to_pay,
-                    vendor_credit_balance = EXCLUDED.vendor_credit_balance, vendor_advance_balance = EXCLUDED.vendor_advance_balance
+                    ship_state = EXCLUDED.ship_state, ship_pincode = EXCLUDED.ship_pincode, ship_country = EXCLUDED.ship_country
             `, [
                 vid, v.vendorName || 'Unknown Vendor', v.contactPerson || '', v.phoneNumber || '', v.email || '', v.gstTreatment || '',
                 v.gstin || '', v.panNumber || '', parseFloat(v.openingBalance) || 0, parsedDate, v.billAddress || '', v.billCity || '',
                 v.billState || '', v.billPinCode || '', v.billCountry || '', v.shipAddress || '', v.shipCity || '',
-                v.shipState || '', v.shipPinCode || '', v.shipCountry || '', parseFloat(v.pendingToPay) || 0, parseFloat(v.vendorCreditBalance) || 0, parseFloat(v.vendorAdvanceBalance) || 0
+                v.shipState || '', v.shipPinCode || '', v.shipCountry || '', parseFloat(v.pendingToPay) || parseFloat(v.openingBalance) || 0, parseFloat(v.vendorCreditBalance) || 0, parseFloat(v.vendorAdvanceBalance) || 0
             ]);
-        }
-        
-        if (incomingIds.length > 0) {
-            await client.query('DELETE FROM vendors WHERE NOT (id = ANY($1))', [incomingIds]);
-        } else {
-            await client.query('DELETE FROM vendors');
         }
         
         await client.query('COMMIT');
         
-        // Also save to JSON for transactions backwards compatibility
-        const db = await readDB(); db.vendors = vendors; await writeDB(db);
+        // Also update JSON store for backwards compatibility without dropping omitted records
+        try {
+            const db = await readDB();
+            if (!Array.isArray(db.vendors)) db.vendors = [];
+            for (let v of vendors) {
+                const idx = db.vendors.findIndex(x => String(x.id) === String(v.id));
+                if (idx >= 0) db.vendors[idx] = { ...db.vendors[idx], ...v };
+                else db.vendors.push(v);
+            }
+            await writeDB(db);
+        } catch (dbErr) {
+            console.warn('JSON store vendor sync skipped:', dbErr.message);
+        }
         
         res.json({ success: true });
     } catch (e) {
@@ -1477,7 +2030,7 @@ app.post('/api/vendors', async (req, res) => {
 });
 
 // 5. Customers
-app.get('/api/customers', async (req, res) => {
+app.get('/api/customers', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, customer_name as "name", contact_person as "contactPerson", phone_number as "mobile", email, gst_treatment as "gstTreatment", 
@@ -1500,19 +2053,18 @@ app.get('/api/customers', async (req, res) => {
         });
         res.json(customers);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch customers');
     }
 });
-app.post('/api/customers', async (req, res) => {
+app.post('/api/customers', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const customers = req.body;
-        const incomingIds = [];
+        const rawCustomers = req.body;
+        const customers = Array.isArray(rawCustomers) ? rawCustomers : (rawCustomers ? [rawCustomers] : []);
         
         for (let c of customers) {
             const cid = c.id || generateId();
-            incomingIds.push(cid);
             let parsedDate = c.asOfDate;
             if (parsedDate && parsedDate.includes('/')) {
                const parts = parsedDate.split('/');
@@ -1527,6 +2079,11 @@ app.post('/api/customers', async (req, res) => {
             const actualState = c.state || c.billState || '';
             const actualPin = c.pin || c.billPinCode || '';
             const actualCountry = c.country || c.billCountry || '';
+            const actualShipAddress = c.shipAddress || '';
+            const actualShipCity = c.shipCity || '';
+            const actualShipState = c.shipState || '';
+            const actualShipPin = c.shipPinCode || '';
+            const actualShipCountry = c.shipCountry || '';
             const actualPan = c.pan || c.panNumber || '';
 
             await client.query(`
@@ -1534,32 +2091,37 @@ app.post('/api/customers', async (req, res) => {
                     id, customer_name, contact_person, phone_number, email, gst_treatment, 
                     gstin, pan_number, opening_balance, as_of_date, bill_address, bill_city, 
                     bill_state, bill_pincode, bill_country, ship_address, ship_city, 
-                    ship_state, ship_pincode, ship_country, pending_to_receive, customer_advance_balance
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                    ship_state, ship_pincode, ship_country, pending_to_receive, store_credit_balance, customer_advance_balance
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
                 ON CONFLICT (id) DO UPDATE SET
                     customer_name = EXCLUDED.customer_name, contact_person = EXCLUDED.contact_person, phone_number = EXCLUDED.phone_number, email = EXCLUDED.email, 
                     gst_treatment = EXCLUDED.gst_treatment, gstin = EXCLUDED.gstin, pan_number = EXCLUDED.pan_number, opening_balance = EXCLUDED.opening_balance, 
                     as_of_date = EXCLUDED.as_of_date, bill_address = EXCLUDED.bill_address, bill_city = EXCLUDED.bill_city, bill_state = EXCLUDED.bill_state, 
                     bill_pincode = EXCLUDED.bill_pincode, bill_country = EXCLUDED.bill_country, ship_address = EXCLUDED.ship_address, ship_city = EXCLUDED.ship_city, 
-                    ship_state = EXCLUDED.ship_state, ship_pincode = EXCLUDED.ship_pincode, ship_country = EXCLUDED.ship_country, pending_to_receive = EXCLUDED.pending_to_receive,
-                    customer_advance_balance = EXCLUDED.customer_advance_balance
+                    ship_state = EXCLUDED.ship_state, ship_pincode = EXCLUDED.ship_pincode, ship_country = EXCLUDED.ship_country
             `, [
                 cid, actualName, c.contactPerson || '', actualMobile, c.email || '', c.gstTreatment || '',
                 c.gstin || '', actualPan, parseFloat(c.openingBalance) || 0, parsedDate, actualAddress, actualCity,
-                actualState, actualPin, actualCountry, c.shipAddress || '', c.shipCity || '',
-                c.shipState || '', c.shipPinCode || '', c.shipCountry || '', parseFloat(c.pendingToReceive) || 0, parseFloat(c.customerAdvanceBalance) || 0
+                actualState, actualPin, actualCountry, actualShipAddress, actualShipCity,
+                actualShipState, actualShipPin, actualShipCountry, parseFloat(c.pendingToReceive) || parseFloat(c.openingBalance) || 0, parseFloat(c.storeCreditBalance) || 0, parseFloat(c.customerAdvanceBalance) || 0
             ]);
-        }
-        
-        if (incomingIds.length > 0) {
-            await client.query('DELETE FROM customers WHERE NOT (id = ANY($1))', [incomingIds]);
-        } else {
-            await client.query('DELETE FROM customers');
         }
         
         await client.query('COMMIT');
         
-        const db = await readDB(); db.customers = customers; await writeDB(db);
+        // Also update JSON store for backwards compatibility without dropping omitted records
+        try {
+            const db = await readDB();
+            if (!Array.isArray(db.customers)) db.customers = [];
+            for (let c of customers) {
+                const idx = db.customers.findIndex(x => String(x.id) === String(c.id));
+                if (idx >= 0) db.customers[idx] = { ...db.customers[idx], ...c };
+                else db.customers.push(c);
+            }
+            await writeDB(db);
+        } catch (dbErr) {
+            console.warn('JSON store customer sync skipped:', dbErr.message);
+        }
         
         res.json({ success: true });
     } catch (e) {
@@ -1571,12 +2133,12 @@ app.post('/api/customers', async (req, res) => {
 });
 
 // 6. Purchase Invoices
-app.get('/api/purchase-invoices', async (req, res) => {
+app.get('/api/purchase-invoices', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, pi_no as "piNo", date, ref_no as "refNo", due_date as "dueDate", payment_terms as "paymentTerms", vendor_id as "vendorId", vendor_name as "vendorName", 
             sub_total as "subTotal", discount_percent as "discountPercent", discount_amount as "discountAmount", total_tax as "totalTax", amount, 
-            paid_amount as "paidAmount", pending_to_pay as "pendingToPay", note, items
+            paid_amount as "paidAmount", pending_to_pay as "pendingToPay", note, items, status
             FROM purchase_invoices
         `);
         // Format dates correctly to DD/MM/YYYY
@@ -1593,10 +2155,10 @@ app.get('/api/purchase-invoices', async (req, res) => {
         });
         res.json(invoices);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch purchase invoices');
     }
 });
-app.post('/api/purchase-invoices', async (req, res) => {
+app.post('/api/purchase-invoices', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
@@ -1604,12 +2166,12 @@ app.post('/api/purchase-invoices', async (req, res) => {
 });
 
 // 7. Sales Invoices
-app.get('/api/sales', async (req, res) => {
+app.get('/api/sales', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, invoice_no as "invoiceNumber", date, ref_no as "refNo", due_date as "dueDate", payment_terms as "paymentTerms", customer_id as "customerId", customer_name as "customerName", 
             sub_total as "subTotal", discount_percent as "discountPercent", discount_amount as "discountAmount", total_tax as "totalTax", amount as "grandTotal", 
-            paid_amount as "receivedAmount", pending_to_receive as "pendingToReceive", note, items
+            paid_amount as "receivedAmount", pending_to_receive as "pendingToReceive", note, items, status
             FROM sales_invoices
         `);
         const invoices = result.rows.map(s => {
@@ -1625,15 +2187,30 @@ app.get('/api/sales', async (req, res) => {
         });
         res.json(invoices);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch sales invoices');
     }
 });
 
 // Atomic Sales Invoice Creation Endpoint
-app.post('/api/sales/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/sales/create', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'System is busy (connection pool). Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/sales/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             date,
@@ -1642,18 +2219,21 @@ app.post('/api/sales/create', async (req, res) => {
             paymentTerms,
             customerId,
             customerName,
-            subTotal,
+            subTotal: clientSubTotal,
+            subtotal: clientSubTotalLower,
             discount,
-            taxAmount,
+            taxAmount: clientTaxAmount,
+            taxTotal: clientTaxTotal,
             grandTotal: clientGrandTotal,
             receivedAmount: clientReceivedAmount,
+            paidAmount: clientPaidAmount,
             items,
             manualInvoiceNumber,
             applyStoreCredit,     // boolean — user chose to apply credit
             requestedCredit       // amount the frontend believes is available (advisory only)
         } = req.body;
 
-        // 1. Validation of Input Financials & Items
+        // ── 1. Validation of Input Financials & Items ─────────────────────────
         if (!items || !Array.isArray(items) || items.length === 0) {
             throw new Error('Invoice must contain at least one line item');
         }
@@ -1665,11 +2245,13 @@ app.post('/api/sales/create', async (req, res) => {
             }
         }
 
-        const parsedSubTotal = parseFloat(subTotal) || 0;
+        const parsedSubTotal = parseFloat(clientSubTotal !== undefined ? clientSubTotal : (clientSubTotalLower !== undefined ? clientSubTotalLower : 0)) || 0;
         const parsedDiscount = parseFloat(discount) || 0;
-        const parsedTaxAmount = parseFloat(taxAmount) || 0;
+        const parsedTaxAmount = parseFloat(clientTaxAmount !== undefined ? clientTaxAmount : (clientTaxTotal !== undefined ? clientTaxTotal : 0)) || 0;
+        const subTotal = parsedSubTotal;
+        const taxAmount = parsedTaxAmount;
         const grandTotal = parseFloat(clientGrandTotal) || 0;
-        const receivedAmount = parseFloat(clientReceivedAmount) || 0;
+        const receivedAmount = parseFloat(clientReceivedAmount !== undefined ? clientReceivedAmount : (clientPaidAmount !== undefined ? clientPaidAmount : 0)) || 0;
 
         if (grandTotal < 0) {
             throw new Error('Grand total cannot be negative');
@@ -1681,19 +2263,46 @@ app.post('/api/sales/create', async (req, res) => {
             throw new Error('Received amount cannot exceed grand total');
         }
 
-        const netUnpaid = Math.max(0, grandTotal - receivedAmount);
+        // ── 2. Level 2: Sequence Acquisition (Strict deterministic prefix order: 'AR' then 'INV') ──
+        let receiptId = null;
+        let receiptNo = null;
+        if (receivedAmount > 0) {
+            let seqResAR = await client.query(
+                `UPDATE document_sequences 
+                 SET current_number = current_number + 1, updated_at = NOW() 
+                 WHERE prefix = 'AR' AND document_type = 'customer_receipt' 
+                 RETURNING current_number`
+            );
+            let nextReceiptNum = 1;
+            if (seqResAR.rows.length === 0) {
+                const maxRes = await client.query(
+                    "SELECT MAX(CAST(REGEXP_REPLACE(receipt_no, '^AR', '', 'g') AS INTEGER)) as max_val FROM customer_receipts WHERE receipt_no ~ '^AR[0-9]+$'"
+                );
+                nextReceiptNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
+                await client.query(
+                    `INSERT INTO document_sequences (prefix, document_type, financial_year, current_number, updated_at)
+                     VALUES ('AR', 'customer_receipt', 'ALL', $1, NOW())
+                     ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
+                    [nextReceiptNum]
+                );
+            } else {
+                nextReceiptNum = parseInt(seqResAR.rows[0].current_number);
+            }
+            receiptNo = `AR${String(nextReceiptNum).padStart(3, '0')}`;
+            receiptId = generateId();
+        }
 
-        // 2. Generate Final Invoice Number Atomically using document_sequences
         let finalInvoiceNo = manualInvoiceNumber;
         if (!finalInvoiceNo) {
-            // Lock and fetch sequence row for sales_invoice
             let seqRes = await client.query(
-                `SELECT current_number FROM document_sequences WHERE document_type = 'sales_invoice' AND financial_year = 'ALL' FOR UPDATE`
+                `UPDATE document_sequences 
+                 SET current_number = current_number + 1, updated_at = NOW() 
+                 WHERE document_type = 'sales_invoice' AND financial_year = 'ALL' 
+                 RETURNING current_number`
             );
 
             let nextNum = 1;
             if (seqRes.rows.length === 0) {
-                // Determine max existing from sales_invoices table to prevent collisions
                 const maxRes = await client.query(
                     `SELECT MAX(CAST(REGEXP_REPLACE(invoice_no, '^INV', '', 'g') AS INTEGER)) as max_val FROM sales_invoices WHERE invoice_no ~ '^INV[0-9]+$'`
                 );
@@ -1701,34 +2310,20 @@ app.post('/api/sales/create', async (req, res) => {
                 nextNum = maxExisting + 1;
 
                 await client.query(
-                    `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number) VALUES ('sales_invoice', 'INV', 'ALL', $1) ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number`,
+                    `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number, updated_at) 
+                     VALUES ('sales_invoice', 'INV', 'ALL', $1, NOW()) 
+                     ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
                     [nextNum]
                 );
             } else {
-                nextNum = (parseInt(seqRes.rows[0].current_number) || 0) + 1;
-                // Safeguard check against existing table max
-                const maxRes = await client.query(
-                    `SELECT MAX(CAST(REGEXP_REPLACE(invoice_no, '^INV', '', 'g') AS INTEGER)) as max_val FROM sales_invoices WHERE invoice_no ~ '^INV[0-9]+$'`
-                );
-                const maxExisting = parseInt(maxRes.rows[0]?.max_val) || 0;
-                if (maxExisting >= nextNum) {
-                    nextNum = maxExisting + 1;
-                }
-
-                await client.query(
-                    `UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'sales_invoice' AND financial_year = 'ALL'`,
-                    [nextNum]
-                );
+                nextNum = parseInt(seqRes.rows[0].current_number);
             }
 
             finalInvoiceNo = 'INV' + String(nextNum).padStart(3, '0');
         }
 
-        // 3. Deterministic Stock Row Locking & Stock Validation
-        // Extract distinct item codes and sort alphabetically to eliminate deadlock risk
+        // ── 3. Level 3: Deterministic Stock Row Locking & Stock Validation ───
         const itemCodes = [...new Set(items.map(i => String(i.code)))].sort();
-
-        // Lock item rows in exact deterministic sorted order
         const dbItemsRes = await client.query(
             `SELECT code, name, stock FROM items WHERE code = ANY($1) ORDER BY code ASC FOR UPDATE`,
             [itemCodes]
@@ -1737,7 +2332,6 @@ app.post('/api/sales/create', async (req, res) => {
         const dbItemsMap = new Map();
         dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.code), r));
 
-        // Group total requested qty per item code in this invoice
         const requestedQtyMap = new Map();
         items.forEach(it => {
             const code = String(it.code);
@@ -1745,7 +2339,6 @@ app.post('/api/sales/create', async (req, res) => {
             requestedQtyMap.set(code, currentReq + parseFloat(it.qty));
         });
 
-        // Validate stock availability
         for (const [code, reqQty] of requestedQtyMap.entries()) {
             const dbItem = dbItemsMap.get(code);
             if (!dbItem) {
@@ -1757,7 +2350,7 @@ app.post('/api/sales/create', async (req, res) => {
             }
         }
 
-        // 4. Deduct Stock
+        // Deduct Stock
         for (const [code, reqQty] of requestedQtyMap.entries()) {
             await client.query(
                 `UPDATE items SET stock = stock - $1 WHERE code = $2`,
@@ -1765,31 +2358,37 @@ app.post('/api/sales/create', async (req, res) => {
             );
         }
 
-        // 5. Parse Dates
+        // Parse Dates
         const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
         const parsedDueDate = parseDateForDB(dueDate);
-
         const sid = generateId();
 
-        // 6. Handle Store Credit consumption (if requested) — lock customer BEFORE invoice insert
+        // ── 4. Level 4: Customer Locking & Store Credit Validation ───────────
         let creditUsed = 0;
-        let finalGrandTotal = grandTotal; // grandTotal already includes credit reduction from frontend
+        let customerRow = null;
 
-        if (applyStoreCredit && customerId && String(customerId) !== 'walk-in') {
-            // Lock customer row to read authoritative store_credit_balance
-            const custCreditRes = await client.query(
+        const calculatedSubTotal = (items && items.length > 0)
+            ? items.reduce((sum, it) => sum + ((parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0)) - (parseFloat(it.disc || it.discount) || 0), 0)
+            : parsedSubTotal;
+        const preCreditBase = grandTotal > 0 ? grandTotal : Math.round(calculatedSubTotal - parsedDiscount + parsedTaxAmount);
+
+        if (customerId && String(customerId) !== 'walk-in') {
+            const custRes = await client.query(
                 `SELECT id, pending_to_receive, store_credit_balance FROM customers WHERE id = $1 FOR UPDATE`,
                 [customerId]
             );
 
-            if (custCreditRes.rows.length > 0) {
-                const availableCredit = parseFloat(custCreditRes.rows[0].store_credit_balance) || 0;
-                // creditUsed = min(requestedCredit, actualAvailable, invoiceTotal pre-credit)
-                const invoicePreCreditTotal = parseFloat(subTotal) - parseFloat(discount || 0) + parseFloat(taxAmount || 0);
+            if (custRes.rows.length === 0) {
+                throw new Error(`Customer ID "${customerId}" not found`);
+            }
+            customerRow = custRes.rows[0];
+
+            if (applyStoreCredit) {
+                const availableCredit = parseFloat(customerRow.store_credit_balance) || 0;
                 creditUsed = Math.min(
                     parseFloat(requestedCredit) || 0,
                     availableCredit,
-                    Math.max(0, invoicePreCreditTotal)
+                    Math.max(0, preCreditBase)
                 );
                 creditUsed = Math.max(0, creditUsed);
 
@@ -1802,37 +2401,26 @@ app.post('/api/sales/create', async (req, res) => {
             }
         }
 
-        // Recalculate grand total and outstanding after backend-validated credit deduction
-        // grandTotal from frontend already has credit applied — use backend creditUsed as the source of truth
-        // If no credit or credit matches: grandTotal stands. If backend creditUsed differs, recalculate.
-        const invoicePreCreditTotal = Math.round((parseFloat(subTotal) || 0) - (parseFloat(discount) || 0) + (parseFloat(taxAmount) || 0));
-        const backendGrandTotal = Math.max(0, invoicePreCreditTotal - creditUsed);
+        const backendGrandTotal = Math.max(0, preCreditBase - creditUsed);
         const backendNetUnpaid = Math.max(0, backendGrandTotal - receivedAmount);
 
-        // 7. Insert Sales Invoice WITHOUT ON CONFLICT DO UPDATE
+        // ── 5. Insert Sales Invoice ───────────────────────────────────────────
         await client.query(
             `INSERT INTO sales_invoices (
                 id, invoice_no, date, ref_no, due_date, payment_terms, customer_id, customer_name,
                 sub_total, discount_percent, discount_amount, total_tax, amount,
-                paid_amount, pending_to_receive, note, items, store_credit_applied
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+                paid_amount, pending_to_receive, returned_amount, note, items, store_credit_applied, idempotency_key
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, $18, $19)`,
             [
                 sid, finalInvoiceNo, parsedDate, refNo || '', parsedDueDate, paymentTerms || '',
                 customerId || null, customerName || 'Walk In Customer', parsedSubTotal, 0,
                 parsedDiscount, parsedTaxAmount, backendGrandTotal, receivedAmount, backendNetUnpaid,
-                '', JSON.stringify(items), creditUsed
+                '', JSON.stringify(items), creditUsed, cleanIdemKey
             ]
         );
 
-        // 8. Update Customer Outstanding Balance (customer already locked above if credit used)
+        // Update Customer Outstanding Balance (customer already locked at Level 4)
         if (customerId && String(customerId) !== 'walk-in') {
-            if (!applyStoreCredit) {
-                // Lock customer if not already locked (no credit path)
-                await client.query(
-                    `SELECT id FROM customers WHERE id = $1 FOR UPDATE`,
-                    [customerId]
-                );
-            }
             if (backendNetUnpaid > 0) {
                 await client.query(
                     `UPDATE customers SET pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2`,
@@ -1841,29 +2429,78 @@ app.post('/api/sales/create', async (req, res) => {
             }
         }
 
+        // ── 6. Create Customer Receipt & Allocation for POS Direct Payment ────
+        if (receivedAmount > 0 && receiptId && receiptNo) {
+            const actualCustomerId = (customerId && String(customerId) !== 'walk-in') ? customerId : null;
+
+            await client.query(`
+                INSERT INTO customer_receipts (
+                    id, receipt_no, date, customer_id, reference_type, amount,
+                    allocated_amount, advance_amount, discount_amount, payment_mode,
+                    reference_no, reference_date, note, status
+                ) VALUES ($1, $2, $3, $4, 'DIRECT', $5, $5, 0, 0, $6, $7, $8, $9, 'ACTIVE')
+            `, [
+                receiptId,
+                receiptNo,
+                parsedDate,
+                actualCustomerId,
+                receivedAmount,
+                req.body.paymentMode || 'Cash',
+                finalInvoiceNo,
+                parsedDate,
+                `POS direct payment for ${finalInvoiceNo}`
+            ]);
+
+            await client.query(`
+                INSERT INTO customer_receipt_allocations (
+                    id, receipt_id, invoice_id, allocated_amount, discount_amount
+                ) VALUES ($1, $2, $3, $4, 0)
+            `, [generateId(), receiptId, sid, receivedAmount]);
+        }
+
+        const responsePayload = { success: true, invoiceNumber: finalInvoiceNo, id: sid, creditUsed, receiptId, receiptNo };
+
+        // ── 7. Commit Idempotency & DB Transaction ────────────────────────────
+        await handleIdempotencyCommit(client, '/api/sales/create', cleanIdemKey, sid, 200, responsePayload);
         await client.query('COMMIT');
-        res.json({ success: true, invoiceNumber: finalInvoiceNo, id: sid, creditUsed });
+        res.json(responsePayload);
 
     } catch (e) {
-        await client.query('ROLLBACK');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/sales/create', cleanIdemKey);
         if (e.code === '40P01') {
-            return sendError(res, e, 'Transaction deadlock detected. Please try saving again.');
+            return res.status(500).json({ error: 'Transaction deadlock detected. Please try saving again.' });
         } else if (e.code === '55P03') {
-            return sendError(res, e, 'System is busy updating inventory for these items. Please try again.');
+            return res.status(503).json({ error: 'System is busy updating inventory for these items. Please try again.' });
         } else if (e.code === '23505') {
-            return sendError(res, e, 'Invoice number collision detected. Please try saving again.');
+            return res.status(409).json({ error: 'Invoice number or idempotency key collision detected. Please try saving again.' });
         }
-        sendError(res, e, e.message || 'Failed to create sales invoice');
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to create sales invoice') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // Atomic Purchase Invoice Creation Endpoint
-app.post('/api/purchases/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/purchases/create', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'System is busy (connection pool). Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/purchases/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             date,
@@ -1881,7 +2518,7 @@ app.post('/api/purchases/create', async (req, res) => {
             manualPiNumber
         } = req.body;
 
-        // 1. Validation of Input Financials & Items
+        // ── 1. Validation of Input Financials & Items ─────────────────────────
         if (!items || !Array.isArray(items) || items.length === 0) {
             throw new Error('Invoice must contain at least one line item');
         }
@@ -1913,17 +2550,18 @@ app.post('/api/purchases/create', async (req, res) => {
 
         const netUnpaid = Math.max(0, grandTotal - paidAmount);
 
-        // 2. Generate Final PI Number Atomically using document_sequences
+        // ── 2. Level 2: Sequence Acquisition (Deterministic prefix order: 'PI' then 'PMT') ──
         let finalPiNo = manualPiNumber;
         if (!finalPiNo) {
-            // Lock and fetch sequence row for purchase_invoice
             let seqRes = await client.query(
-                `SELECT current_number FROM document_sequences WHERE document_type = 'purchase_invoice' AND financial_year = 'ALL' FOR UPDATE`
+                `UPDATE document_sequences 
+                 SET current_number = current_number + 1, updated_at = NOW() 
+                 WHERE document_type = 'purchase_invoice' AND financial_year = 'ALL' 
+                 RETURNING current_number`
             );
 
             let nextNum = 1;
             if (seqRes.rows.length === 0) {
-                // Determine max existing from purchase_invoices table to prevent collisions
                 const maxRes = await client.query(
                     `SELECT MAX(CAST(REGEXP_REPLACE(pi_no, '^\\D+', '', 'g') AS INTEGER)) as max_val FROM purchase_invoices WHERE pi_no ~ '\\d+'`
                 );
@@ -1931,36 +2569,52 @@ app.post('/api/purchases/create', async (req, res) => {
                 nextNum = maxExisting + 1;
 
                 await client.query(
-                    `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number) VALUES ('purchase_invoice', 'PI', 'ALL', $1) ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number`,
+                    `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number, updated_at) 
+                     VALUES ('purchase_invoice', 'PI', 'ALL', $1, NOW()) 
+                     ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
                     [nextNum]
                 );
             } else {
-                nextNum = (parseInt(seqRes.rows[0].current_number) || 0) + 1;
-                // Safeguard check against existing table max
-                const maxRes = await client.query(
-                    `SELECT MAX(CAST(REGEXP_REPLACE(pi_no, '^\\D+', '', 'g') AS INTEGER)) as max_val FROM purchase_invoices WHERE pi_no ~ '\\d+'`
-                );
-                const maxExisting = parseInt(maxRes.rows[0]?.max_val) || 0;
-                if (maxExisting >= nextNum) {
-                    nextNum = maxExisting + 1;
-                }
-
-                await client.query(
-                    `UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'purchase_invoice' AND financial_year = 'ALL'`,
-                    [nextNum]
-                );
+                nextNum = parseInt(seqRes.rows[0].current_number);
             }
 
             finalPiNo = 'PI-' + String(nextNum).padStart(3, '0');
         }
 
-        // 3. Handle Items (Creation of New Items & Concurrency-safe locking of Existing Items)
+        let paymentNo = null;
+        let paymentId = null;
+        if (paidAmount > 0) {
+            let seqResPMT = await client.query(
+                `UPDATE document_sequences 
+                 SET current_number = current_number + 1, updated_at = NOW() 
+                 WHERE prefix = 'PMT' AND document_type = 'vendor_payment' 
+                 RETURNING current_number`
+            );
+            let nextPmtNum = 1;
+            if (seqResPMT.rows.length === 0) {
+                const maxRes = await client.query(
+                    "SELECT MAX(CAST(REGEXP_REPLACE(payment_no, '^PMT', '', 'g') AS INTEGER)) as max_val FROM vendor_payments WHERE payment_no ~ '^PMT[0-9]+$'"
+                );
+                nextPmtNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
+                await client.query(
+                    `INSERT INTO document_sequences (prefix, document_type, financial_year, current_number, updated_at)
+                     VALUES ('PMT', 'vendor_payment', 'ALL', $1, NOW())
+                     ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
+                    [nextPmtNum]
+                );
+            } else {
+                nextPmtNum = parseInt(seqResPMT.rows[0].current_number);
+            }
+            paymentNo = `PMT${String(nextPmtNum).padStart(3, '0')}`;
+            paymentId = generateId();
+        }
+
+        // ── 3. Level 3: Handle Items & Deterministic Stock Row Locking ────────
         const finalItemsList = [];
         const existingItemsToUpdate = [];
 
         for (const it of items) {
             if (it.isNew) {
-                // Generate a unique code
                 const newItemCode = 'ITEM' + Date.now().toString().slice(-6) + Math.floor(Math.random()*1000);
                 
                 await client.query(
@@ -2013,7 +2667,6 @@ app.post('/api/purchases/create', async (req, res) => {
             const dbItemsMap = new Map();
             dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.code), r));
 
-            // Aggregate quantity by item code
             const requestedQtyMap = new Map();
             existingItemsToUpdate.forEach(it => {
                 const code = String(it.code);
@@ -2021,14 +2674,12 @@ app.post('/api/purchases/create', async (req, res) => {
                 requestedQtyMap.set(code, currentReq + parseFloat(it.qty));
             });
 
-            // Validate existing codes
             for (const code of requestedQtyMap.keys()) {
                 if (!dbItemsMap.has(code)) {
                     throw new Error(`Existing item code "${code}" not found in inventory`);
                 }
             }
 
-            // Perform stock increments
             for (const [code, reqQty] of requestedQtyMap.entries()) {
                 await client.query(
                     `UPDATE items SET stock = stock + $1 WHERE code = $2`,
@@ -2037,11 +2688,10 @@ app.post('/api/purchases/create', async (req, res) => {
             }
         }
 
-        // 4. Resolve Vendor (by stable ID or create new — never by name) - Lock Vendor AFTER Items
+        // ── 4. Level 4: Resolve & Lock Vendor Row ─────────────────────────────
         let vendorIdToUse = null;
 
         if (requestedVendorId) {
-            // EXISTING VENDOR PATH: lock and update by primary key only
             const vRes = await client.query(
                 `SELECT id, pending_to_pay FROM vendors WHERE id = $1 FOR UPDATE`,
                 [requestedVendorId]
@@ -2058,7 +2708,6 @@ app.post('/api/purchases/create', async (req, res) => {
                 [netUnpaid, vendorIdToUse]
             );
         } else {
-            // NEW VENDOR PATH: no vendorId supplied, create vendor inside this transaction
             if (!vendorName) {
                 throw new Error('Vendor name is required when creating a new vendor');
             }
@@ -2082,46 +2731,76 @@ app.post('/api/purchases/create', async (req, res) => {
             );
         }
 
-        // 5. Parse Dates
+        // Parse Dates
         const parsedDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
         const parsedDueDate = parseDateForDB(dueDate);
-
         const piId = generateId();
 
-        // 6. Insert Purchase Invoice record without ON CONFLICT DO UPDATE
+        // ── 5. Insert Purchase Invoice Record ─────────────────────────────────
         await client.query(
             `INSERT INTO purchase_invoices (
                 id, pi_no, date, ref_no, due_date, payment_terms, vendor_id, vendor_name,
                 sub_total, discount_percent, discount_amount, total_tax, amount,
-                paid_amount, pending_to_pay, note, items
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                paid_amount, pending_to_pay, returned_amount, note, items, idempotency_key
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, $18)`,
             [
                 piId, finalPiNo, parsedDate, refNo || '', parsedDueDate, paymentTerms || 'None',
                 vendorIdToUse, vendorName, parsedSubTotal, 0,
                 parsedDiscount, parsedTaxAmount, grandTotal, paidAmount, netUnpaid,
-                req.body.note || req.body.piNote || '', JSON.stringify(finalItemsList)
+                req.body.note || req.body.piNote || '', JSON.stringify(finalItemsList), cleanIdemKey
             ]
-
         );
 
+        // ── 6. Atomically Create Linked Vendor Payment for Direct Cash Purchase ─
+        if (paidAmount > 0 && paymentId && paymentNo) {
+            await client.query(`
+                INSERT INTO vendor_payments (
+                    id, payment_no, date, vendor_id, reference_type, amount,
+                    allocated_amount, advance_amount, discount_amount, payment_mode,
+                    reference_no, reference_date, note, status
+                ) VALUES ($1, $2, $3, $4, 'DIRECT', $5, $5, 0, 0, $6, $7, $8, $9, 'ACTIVE')
+            `, [
+                paymentId,
+                paymentNo,
+                parsedDate,
+                vendorIdToUse,
+                paidAmount,
+                req.body.paymentMode || 'Cash',
+                finalPiNo,
+                parsedDate,
+                `Cash purchase payment for ${finalPiNo}`
+            ]);
+
+            await client.query(`
+                INSERT INTO vendor_payment_allocations (
+                    id, payment_id, purchase_invoice_id, allocated_amount, discount_amount
+                ) VALUES ($1, $2, $3, $4, 0)
+            `, [generateId(), paymentId, piId, paidAmount]);
+        }
+
+        const responsePayload = { success: true, piNo: finalPiNo, id: piId, paymentId, paymentNo };
+
+        // ── 7. Commit Idempotency & DB Transaction ────────────────────────────
+        await handleIdempotencyCommit(client, '/api/purchases/create', cleanIdemKey, piId, 200, responsePayload);
         await client.query('COMMIT');
-        res.json({ success: true, piNo: finalPiNo, id: piId });
+        res.json(responsePayload);
 
     } catch (e) {
-        await client.query('ROLLBACK');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/purchases/create', cleanIdemKey);
         if (e.code === '40P01') {
-            return sendError(res, e, 'Transaction deadlock detected. Please try saving again.');
+            return res.status(500).json({ error: 'Transaction deadlock detected. Please try saving again.' });
         } else if (e.code === '55P03') {
-            return sendError(res, e, 'System is busy updating inventory for these items. Please try again.');
+            return res.status(503).json({ error: 'System is busy updating inventory for these items. Please try again.' });
         } else if (e.code === '23505') {
-            return sendError(res, e, 'Purchase invoice number collision detected. Please try saving again.');
+            return res.status(409).json({ error: 'Purchase invoice number or idempotency key collision detected. Please try saving again.' });
         }
-        sendError(res, e, e.message || 'Failed to create purchase invoice');
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to create purchase invoice') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
-app.post('/api/sales', async (req, res) => {
+app.post('/api/sales', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
@@ -2129,10 +2808,25 @@ app.post('/api/sales', async (req, res) => {
 });
 
 // 8a. Atomic Sales Return Creation
-app.post('/api/sales-returns/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/sales-returns/create', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'System is busy (connection pool). Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/sales-returns/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             invoiceId,          // stable sales_invoices.id — REQUIRED
@@ -2156,7 +2850,7 @@ app.post('/api/sales-returns/create', async (req, res) => {
 
         // ── 2. Lock original Sales Invoice by stable ID ───────────────────────
         const invRes = await client.query(
-            `SELECT id, invoice_no, customer_id, discount_amount, total_tax, amount, items, status
+            `SELECT id, invoice_no, customer_id, discount_amount, total_tax, amount, pending_to_receive, returned_amount, items, status
              FROM sales_invoices WHERE id = $1 FOR UPDATE`,
             [invoiceId]
         );
@@ -2230,7 +2924,10 @@ app.post('/api/sales-returns/create', async (req, res) => {
 
         // ── 7. Generate Return Number Atomically ──────────────────────────────
         let seqRes = await client.query(
-            `SELECT current_number FROM document_sequences WHERE document_type = 'sales_return' AND financial_year = 'ALL' FOR UPDATE`
+            `UPDATE document_sequences 
+             SET current_number = current_number + 1, updated_at = NOW() 
+             WHERE document_type = 'sales_return' AND financial_year = 'ALL' 
+             RETURNING current_number`
         );
         let nextReturnNum = 1;
         if (seqRes.rows.length === 0) {
@@ -2239,20 +2936,13 @@ app.post('/api/sales-returns/create', async (req, res) => {
             );
             nextReturnNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
             await client.query(
-                `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number) VALUES ('sales_return', 'RET', 'ALL', $1) ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number`,
+                `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number, updated_at) 
+                 VALUES ('sales_return', 'RET', 'ALL', $1, NOW()) 
+                 ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
                 [nextReturnNum]
             );
         } else {
-            nextReturnNum = (parseInt(seqRes.rows[0].current_number) || 0) + 1;
-            const maxRes = await client.query(
-                `SELECT MAX(CAST(REGEXP_REPLACE(return_no, '^RET', '', 'g') AS INTEGER)) as max_val FROM sales_returns WHERE return_no ~ '^RET[0-9]+$'`
-            );
-            const maxExisting = parseInt(maxRes.rows[0]?.max_val) || 0;
-            if (maxExisting >= nextReturnNum) nextReturnNum = maxExisting + 1;
-            await client.query(
-                `UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'sales_return' AND financial_year = 'ALL'`,
-                [nextReturnNum]
-            );
+            nextReturnNum = parseInt(seqRes.rows[0].current_number);
         }
         const finalReturnNo = 'RET' + String(nextReturnNum).padStart(3, '0');
 
@@ -2360,12 +3050,12 @@ app.post('/api/sales-returns/create', async (req, res) => {
             if (custRes.rows.length === 0)
                 throw new Error(`Customer ID "${customerId}" not found`);
 
-            const currentPending = parseFloat(custRes.rows[0].pending_to_receive) || 0;
+            const invoicePending = parseFloat(originalInvoice.pending_to_receive) || 0;
             const requestedCashRefund = Math.max(0, parseFloat(clientRefundAmount) || 0);
 
-            // Allocation Step 1: Outstanding absorption
-            receivableReduction = Math.min(returnGrandTotal, currentPending);
-            // Allocation Step 2: Remaining return value after outstanding is cleared
+            // Allocation Step 1: Outstanding absorption against THIS SPECIFIC INVOICE
+            receivableReduction = Math.min(returnGrandTotal, invoicePending);
+            // Allocation Step 2: Remaining return value after invoice outstanding is cleared
             amountAfterReceivable = returnGrandTotal - receivableReduction;
             // Allocation Step 3: Cash refund capped by remaining return value
             cashRefundAmount = Math.min(requestedCashRefund, amountAfterReceivable);
@@ -2388,6 +3078,15 @@ app.post('/api/sales-returns/create', async (req, res) => {
             );
         }
 
+        // ── 12b. Update Original Sales Invoice ────────────────────────────────
+        await client.query(
+            `UPDATE sales_invoices SET
+                pending_to_receive = COALESCE(pending_to_receive, 0) - $1,
+                returned_amount    = COALESCE(returned_amount, 0) + $2
+             WHERE id = $3`,
+            [receivableReduction, returnGrandTotal, invoiceId]
+        );
+
         // ── 13. Insert Sales Return ───────────────────────────────────────────
         const returnId = generateId();
         await client.query(
@@ -2395,45 +3094,65 @@ app.post('/api/sales-returns/create', async (req, res) => {
                 id, return_no, invoice_id, invoice_no, date,
                 customer_id, customer_name,
                 sub_total, discount_amount, total_tax, grand_total,
-                refund_amount, store_credit, status, created_at, updated_at, items
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW(),$15)`,
+                refund_amount, store_credit, receivable_reduction, status, created_at, updated_at, items
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'ACTIVE',NOW(),NOW(),$15)`,
             [
                 returnId, finalReturnNo, invoiceId, originalInvoice.invoice_no, parsedReturnDate,
                 isWalkIn ? null : customerId,
                 req.body.customerName || '',
                 returnSubTotal, proportionalGlobalDisc, returnTaxTotal, returnGrandTotal,
-                cashRefundAmount, storeCreditCreated, 'ACTIVE',
+                cashRefundAmount, storeCreditCreated, receivableReduction,
                 JSON.stringify(returnLineItems)
             ]
         );
 
 
-        await client.query('COMMIT');
-        res.json({
+        const responsePayload = {
             success: true,
             returnNo: finalReturnNo,
             id: returnId,
             returnGrandTotal,
             storeCreditCreated,
             cashRefundAmount
-        });
+        };
+
+        // ── Commit Idempotency & DB Transaction ──────────────────────────────
+        await handleIdempotencyCommit(client, '/api/sales-returns/create', cleanIdemKey, returnId, 200, responsePayload);
+        await client.query('COMMIT');
+        res.json(responsePayload);
 
     } catch (e) {
-        await client.query('ROLLBACK');
-        if (e.code === '40P01') return sendError(res, e, 'Transaction deadlock detected. Please try again.');
-        if (e.code === '55P03') return sendError(res, e, 'System is busy. Please try again.');
-        if (e.code === '23505') return sendError(res, e, 'Duplicate return number. Please try again.');
-        sendError(res, e, e.message || 'Failed to create sales return');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/sales-returns/create', cleanIdemKey);
+        if (e.code === '40P01') return res.status(500).json({ error: 'Transaction deadlock detected. Please try again.' });
+        if (e.code === '55P03') return res.status(503).json({ error: 'System is busy. Please try again.' });
+        if (e.code === '23505') return res.status(409).json({ error: 'Duplicate return number or idempotency key collision detected. Please try saving again.' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to create sales return') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // POST /api/purchase-returns/create
-app.post('/api/purchase-returns/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/purchase-returns/create', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'System is busy (connection pool). Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/purchase-returns/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             invoiceId,          // stable purchase_invoices.id
@@ -2462,7 +3181,7 @@ app.post('/api/purchase-returns/create', async (req, res) => {
 
         // 2. Lock original Purchase Invoice
         const piRes = await client.query(
-            `SELECT id, pi_no, vendor_id, vendor_name, sub_total, discount_percent, discount_amount, total_tax, amount, items, status
+            `SELECT id, pi_no, vendor_id, vendor_name, sub_total, discount_percent, discount_amount, total_tax, amount, pending_to_pay, returned_amount, items, status
              FROM purchase_invoices WHERE id = $1 FOR UPDATE`,
             [invoiceId]
         );
@@ -2516,9 +3235,12 @@ app.post('/api/purchase-returns/create', async (req, res) => {
             requestedReturnQty.set(code, (requestedReturnQty.get(code) || 0) + qty);
         }
 
-        // 5. Lock document_sequences for prefix='PRET' and document_type='purchase_return' (FOR UPDATE)
+        // 5. Increment document_sequences atomically for purchase_return
         let seqRes = await client.query(
-            `SELECT current_number FROM document_sequences WHERE document_type = 'purchase_return' AND financial_year = 'ALL' FOR UPDATE`
+            `UPDATE document_sequences 
+             SET current_number = current_number + 1, updated_at = NOW() 
+             WHERE document_type = 'purchase_return' AND financial_year = 'ALL' 
+             RETURNING current_number`
         );
         let nextReturnNum = 1;
         if (seqRes.rows.length === 0) {
@@ -2527,22 +3249,13 @@ app.post('/api/purchase-returns/create', async (req, res) => {
             );
             nextReturnNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
             await client.query(
-                `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number) VALUES ('purchase_return', 'PRET', 'ALL', $1) ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number`,
+                `INSERT INTO document_sequences (document_type, prefix, financial_year, current_number, updated_at) 
+                 VALUES ('purchase_return', 'PRET', 'ALL', $1, NOW()) 
+                 ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
                 [nextReturnNum]
             );
         } else {
-            nextReturnNum = (parseInt(seqRes.rows[0].current_number) || 0) + 1;
-            const maxRes = await client.query(
-                `SELECT MAX(CAST(REGEXP_REPLACE(return_no, '^PRET', '', 'g') AS INTEGER)) as max_val FROM purchase_returns WHERE return_no ~ '^PRET[0-9]+$'`
-            );
-            const maxExisting = parseInt(maxRes.rows[0]?.max_val) || 0;
-            if (maxExisting >= nextReturnNum) {
-                nextReturnNum = maxExisting + 1;
-            }
-            await client.query(
-                `UPDATE document_sequences SET current_number = $1, updated_at = NOW() WHERE document_type = 'purchase_return' AND financial_year = 'ALL'`,
-                [nextReturnNum]
-            );
+            nextReturnNum = parseInt(seqRes.rows[0].current_number);
         }
         const finalReturnNo = 'PRET' + String(nextReturnNum).padStart(3, '0');
 
@@ -2678,7 +3391,8 @@ app.post('/api/purchase-returns/create', async (req, res) => {
         const currentVendorCredit = parseFloat(vendorRes.rows[0].vendor_credit_balance) || 0;
 
         // 12. Vendor Financial Allocation
-        const payableReduction = Math.min(returnGrandTotal, currentPendingToPay);
+        const invoicePending = parseFloat(originalInvoice.pending_to_pay) || 0;
+        const payableReduction = Math.min(returnGrandTotal, invoicePending);
         const amountAfterPayable = returnGrandTotal - payableReduction;
         const cashReceivedFromVendor = Math.min(requestedCashReceived, amountAfterPayable);
         const vendorCreditCreated = amountAfterPayable - cashReceivedFromVendor;
@@ -2697,6 +3411,15 @@ app.post('/api/purchase-returns/create', async (req, res) => {
             [newPendingToPay, newVendorCredit, vendorId]
         );
 
+        // 12b. Update Original Purchase Invoice
+        await client.query(
+            `UPDATE purchase_invoices SET
+                pending_to_pay  = COALESCE(pending_to_pay, 0) - $1,
+                returned_amount = COALESCE(returned_amount, 0) + $2
+             WHERE id = $3`,
+            [payableReduction, returnGrandTotal, invoiceId]
+        );
+
         // Parse date
         const parsedReturnDate = parseDateForDB(date) || new Date().toISOString().split('T')[0];
 
@@ -2706,8 +3429,8 @@ app.post('/api/purchase-returns/create', async (req, res) => {
             `INSERT INTO purchase_returns (
                 id, return_no, invoice_id, invoice_no, date, vendor_id, vendor_name,
                 sub_total, discount_amount, total_tax, grand_total, refund_amount, store_credit,
-                vendor_credit, cash_received, status, created_at, updated_at, items
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW(), $17)`,
+                vendor_credit, cash_received, payable_reduction, status, created_at, updated_at, items
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'ACTIVE', NOW(), NOW(), $17)`,
             [
                 returnId,
                 finalReturnNo,
@@ -2724,36 +3447,56 @@ app.post('/api/purchase-returns/create', async (req, res) => {
                 0,                               // store_credit set to 0 for new returns
                 vendorCreditCreated,             // authoritative vendor_credit field
                 cashReceivedFromVendor,          // authoritative cash_received field
-                'ACTIVE',
+                payableReduction,
                 JSON.stringify(returnLineItems)
             ]
         );
 
-        await client.query('COMMIT');
-        res.json({
+        const responsePayload = {
             success: true,
             returnNo: finalReturnNo,
             id: returnId,
             returnGrandTotal,
             vendorCreditCreated,
             cashReceivedFromVendor
-        });
+        };
+
+        // ── Commit Idempotency & DB Transaction ──────────────────────────────
+        await handleIdempotencyCommit(client, '/api/purchase-returns/create', cleanIdemKey, returnId, 200, responsePayload);
+        await client.query('COMMIT');
+        res.json(responsePayload);
 
     } catch (e) {
-        await client.query('ROLLBACK');
-        if (e.code === '40P01') return sendError(res, e, 'Transaction deadlock detected. Please try saving again.');
-        if (e.code === '55P03') return sendError(res, e, 'System is busy updating inventory. Please try again.');
-        if (e.code === '23505') return sendError(res, e, 'Duplicate return number. Please try saving again.');
-        sendError(res, e, e.message || 'Failed to create purchase return');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/purchase-returns/create', cleanIdemKey);
+        if (e.code === '40P01') return res.status(500).json({ error: 'Transaction deadlock detected. Please try saving again.' });
+        if (e.code === '55P03') return res.status(503).json({ error: 'System is busy updating inventory. Please try again.' });
+        if (e.code === '23505') return res.status(409).json({ error: 'Duplicate return number or idempotency key collision detected. Please try saving again.' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to create purchase return') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
-app.post('/api/receipts/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/receipts/create', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'Database connection pool busy. Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/receipts/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             customerId,
@@ -2828,7 +3571,7 @@ app.post('/api/receipts/create', async (req, res) => {
         // Lock affected Sales Invoices in deterministic sorted order
         uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
         const invRes = await client.query(
-            "SELECT id, invoice_no, customer_id, customer_name, amount, paid_amount, pending_to_receive, status FROM sales_invoices WHERE id = ANY($1) FOR UPDATE",
+            "SELECT id, invoice_no, customer_id, customer_name, amount, paid_amount, pending_to_receive, status FROM sales_invoices WHERE id = ANY($1) ORDER BY id ASC FOR UPDATE",
             [uniqueInvoiceIds]
         );
 
@@ -2856,8 +3599,7 @@ app.post('/api/receipts/create', async (req, res) => {
             }
 
             const currentPaid = parseFloat(invoice.paid_amount) || 0;
-            const currentTotal = parseFloat(invoice.amount) || 0;
-            const remaining = Math.max(0, currentTotal - currentPaid);
+            const remaining = parseFloat(invoice.pending_to_receive) || 0;
 
             if ((allocAmt + discAmt) > remaining + 0.0001) {
                 throw new Error(`Allocation + discount (${(allocAmt + discAmt).toFixed(2)}) exceeds remaining outstanding balance of ${remaining.toFixed(2)} on invoice ${invoice.invoice_no}`);
@@ -2886,22 +3628,27 @@ app.post('/api/receipts/create', async (req, res) => {
 
         // 3. Generate Receipt number atomically
         let seqRes = await client.query(
-            "SELECT current_number FROM document_sequences WHERE prefix = 'AR' AND document_type = 'customer_receipt' FOR UPDATE"
+            `UPDATE document_sequences 
+             SET current_number = current_number + 1, updated_at = NOW() 
+             WHERE prefix = 'AR' AND document_type = 'customer_receipt' 
+             RETURNING current_number`
         );
+        let nextReceiptNum = 1;
         if (seqRes.rows.length === 0) {
+            const maxRes = await client.query(
+                "SELECT MAX(CAST(REGEXP_REPLACE(receipt_no, '^AR', '', 'g') AS INTEGER)) as max_val FROM customer_receipts WHERE receipt_no ~ '^AR[0-9]+$'"
+            );
+            nextReceiptNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
             await client.query(
-                "INSERT INTO document_sequences (prefix, document_type, current_number) VALUES ('AR', 'customer_receipt', 1) ON CONFLICT DO NOTHING"
+                `INSERT INTO document_sequences (prefix, document_type, financial_year, current_number, updated_at)
+                 VALUES ('AR', 'customer_receipt', 'ALL', $1, NOW())
+                 ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
+                [nextReceiptNum]
             );
-            seqRes = await client.query(
-                "SELECT current_number FROM document_sequences WHERE prefix = 'AR' AND document_type = 'customer_receipt' FOR UPDATE"
-            );
+        } else {
+            nextReceiptNum = parseInt(seqRes.rows[0].current_number);
         }
-        const currentSeqNum = parseInt(seqRes.rows[0].current_number) || 1;
-        const receiptNo = `AR${String(currentSeqNum).padStart(3, '0')}`;
-        await client.query(
-            "UPDATE document_sequences SET current_number = $1 WHERE prefix = 'AR' AND document_type = 'customer_receipt'",
-            [currentSeqNum + 1]
-        );
+        const receiptNo = `AR${String(nextReceiptNum).padStart(3, '0')}`;
 
         // 4. Lock customer row LAST if registered customer
         if (!isWalkIn) {
@@ -2960,25 +3707,49 @@ app.post('/api/receipts/create', async (req, res) => {
             `, [newPending, customerId]);
         }
 
+        const responsePayload = { success: true, receiptNo, receiptId, allocatedAmount, discountAmount: finalDiscount };
+
+        // ── Commit Idempotency & DB Transaction ──────────────────────────────
+        await handleIdempotencyCommit(client, '/api/receipts/create', cleanIdemKey, receiptId, 200, responsePayload);
         await client.query('COMMIT');
-        res.json({ success: true, receiptNo, receiptId, allocatedAmount, discountAmount: finalDiscount });
+        res.json(responsePayload);
     } catch (err) {
-        await client.query('ROLLBACK');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/receipts/create', cleanIdemKey);
         console.error('Customer Receipt creation failed:', err);
-        if (err.code || err.stack.includes('pg') || err.message.includes('connect')) {
+        if (err.code === '40P01') {
+            return res.status(500).json({ error: 'Transaction deadlock detected. Please try saving again.' });
+        } else if (err.code === '23505') {
+            return res.status(409).json({ error: 'Receipt number or idempotency key collision detected. Please try saving again.' });
+        } else if (err.code || (err.stack && err.stack.includes('pg')) || (err.message && err.message.includes('connect'))) {
             res.status(500).json({ error: 'An unexpected database error occurred' });
         } else {
-            res.status(400).json({ error: err.message });
+            res.status(400).json({ error: sanitizeClientError(err, 'Failed to create customer receipt') });
         }
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
-app.post('/api/vendor-payments/create', async (req, res) => {
-    const client = await pool.connect();
+app.post('/api/vendor-payments/create', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (connErr) {
+        return res.status(503).json({ error: 'Database connection pool busy. Please try again.' });
+    }
+    let cleanIdemKey = null;
     try {
         await client.query('BEGIN');
+
+        // ── 0. Persistent Database-Backed Idempotency Gate ────────────────────
+        const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+        const idemResult = await handleIdempotencyBegin(client, '/api/vendor-payments/create', idempotencyKey);
+        if (idemResult && !idemResult.isNew) {
+            await client.query('ROLLBACK');
+            return res.status(idemResult.responseCode).json(idemResult.responseBody);
+        }
+        cleanIdemKey = idemResult ? idemResult.cleanKey : null;
 
         const {
             vendorId,
@@ -3039,7 +3810,7 @@ app.post('/api/vendor-payments/create', async (req, res) => {
         // Lock affected Purchase Invoices in deterministic sorted order
         uniqueInvoiceIds = Array.from(aggMap.keys()).sort();
         const invRes = await client.query(
-            "SELECT id, pi_no, vendor_id, amount, paid_amount, pending_to_pay, status FROM purchase_invoices WHERE id = ANY($1) FOR UPDATE",
+            "SELECT id, pi_no, vendor_id, amount, paid_amount, pending_to_pay, status FROM purchase_invoices WHERE id = ANY($1) ORDER BY id ASC FOR UPDATE",
             [uniqueInvoiceIds]
         );
 
@@ -3059,8 +3830,7 @@ app.post('/api/vendor-payments/create', async (req, res) => {
             }
 
             const currentPaid = parseFloat(invoice.paid_amount) || 0;
-            const currentTotal = parseFloat(invoice.amount) || 0;
-            const remaining = Math.max(0, currentTotal - currentPaid);
+            const remaining = parseFloat(invoice.pending_to_pay) || 0;
 
             if ((allocAmt + discAmt) > remaining + 0.0001) {
                 throw new Error(`Allocation + discount (${(allocAmt + discAmt).toFixed(2)}) exceeds remaining outstanding balance of ${remaining.toFixed(2)} on invoice ${invoice.pi_no}`);
@@ -3087,24 +3857,29 @@ app.post('/api/vendor-payments/create', async (req, res) => {
         }
         const finalDiscount = discount > 0 ? discount : totalDiscount;
 
-        // 3. Lock/generate sequence
+        // 3. Lock/generate sequence atomically
         let seqRes = await client.query(
-            "SELECT current_number FROM document_sequences WHERE prefix = 'PMT' AND document_type = 'vendor_payment' FOR UPDATE"
+            `UPDATE document_sequences 
+             SET current_number = current_number + 1, updated_at = NOW() 
+             WHERE prefix = 'PMT' AND document_type = 'vendor_payment' 
+             RETURNING current_number`
         );
+        let nextPmtNum = 1;
         if (seqRes.rows.length === 0) {
+            const maxRes = await client.query(
+                "SELECT MAX(CAST(REGEXP_REPLACE(payment_no, '^PMT', '', 'g') AS INTEGER)) as max_val FROM vendor_payments WHERE payment_no ~ '^PMT[0-9]+$'"
+            );
+            nextPmtNum = (parseInt(maxRes.rows[0]?.max_val) || 0) + 1;
             await client.query(
-                "INSERT INTO document_sequences (prefix, document_type, current_number) VALUES ('PMT', 'vendor_payment', 1) ON CONFLICT DO NOTHING"
+                `INSERT INTO document_sequences (prefix, document_type, financial_year, current_number, updated_at)
+                 VALUES ('PMT', 'vendor_payment', 'ALL', $1, NOW())
+                 ON CONFLICT (document_type, financial_year) DO UPDATE SET current_number = EXCLUDED.current_number, updated_at = NOW()`,
+                [nextPmtNum]
             );
-            seqRes = await client.query(
-                "SELECT current_number FROM document_sequences WHERE prefix = 'PMT' AND document_type = 'vendor_payment' FOR UPDATE"
-            );
+        } else {
+            nextPmtNum = parseInt(seqRes.rows[0].current_number);
         }
-        const currentSeqNum = parseInt(seqRes.rows[0].current_number) || 1;
-        const paymentNo = `PMT${String(currentSeqNum).padStart(3, '0')}`;
-        await client.query(
-            "UPDATE document_sequences SET current_number = $1 WHERE prefix = 'PMT' AND document_type = 'vendor_payment'",
-            [currentSeqNum + 1]
-        );
+        const paymentNo = `PMT${String(nextPmtNum).padStart(3, '0')}`;
 
         // 4. Lock Vendor row
         const vendorRes = await client.query(
@@ -3157,23 +3932,32 @@ app.post('/api/vendor-payments/create', async (req, res) => {
             WHERE id = $2
         `, [newPending, vendorId]);
 
+        const responsePayload = { success: true, paymentNo, paymentId, allocatedAmount, discountAmount: finalDiscount };
+
+        // ── Commit Idempotency & DB Transaction ──────────────────────────────
+        await handleIdempotencyCommit(client, '/api/vendor-payments/create', cleanIdemKey, paymentId, 200, responsePayload);
         await client.query('COMMIT');
-        res.json({ success: true, paymentNo, paymentId, allocatedAmount, discountAmount: finalDiscount });
+        res.json(responsePayload);
     } catch (err) {
-        await client.query('ROLLBACK');
+        await safeRollback(client);
+        await handleIdempotencyFail(client, '/api/vendor-payments/create', cleanIdemKey);
         console.error('Vendor Payment creation failed:', err);
-        if (err.code || err.stack.includes('pg') || err.message.includes('connect')) {
+        if (err.code === '40P01') {
+            return res.status(500).json({ error: 'Transaction deadlock detected. Please try saving again.' });
+        } else if (err.code === '23505') {
+            return res.status(409).json({ error: 'Vendor payment number or idempotency key collision detected. Please try saving again.' });
+        } else if (err.code || (err.stack && err.stack.includes('pg')) || (err.message && err.message.includes('connect'))) {
             res.status(500).json({ error: 'An unexpected database error occurred' });
         } else {
-            res.status(400).json({ error: err.message });
+            res.status(400).json({ error: sanitizeClientError(err, 'Failed to create vendor payment') });
         }
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 8. Sales Returns
-app.get('/api/sales-returns', async (req, res) => {
+app.get('/api/sales-returns', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, return_no as "returnNo", date, invoice_no as "invoiceNo", invoice_id as "invoiceId",
@@ -3192,11 +3976,11 @@ app.get('/api/sales-returns', async (req, res) => {
         });
         res.json(returns);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch sales returns');
     }
 });
 
-app.post('/api/sales-returns', async (req, res) => {
+app.post('/api/sales-returns', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
@@ -3205,7 +3989,7 @@ app.post('/api/sales-returns', async (req, res) => {
 
 
 // Purchase Returns API
-app.get('/api/purchase-returns', async (req, res) => {
+app.get('/api/purchase-returns', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, return_no as "returnNo", date, invoice_no as "invoiceNo", invoice_id as "invoiceId", vendor_id as "vendorId", vendor_name as "vendorName", 
@@ -3223,15 +4007,286 @@ app.get('/api/purchase-returns', async (req, res) => {
         });
         res.json(returns);
     } catch (e) {
-        console.error(e); res.json([]);
+        sendError(res, e, 'Failed to fetch purchase returns');
     }
 });
 
-app.post('/api/purchase-returns', async (req, res) => {
+app.post('/api/purchase-returns', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     res.status(410).json({
         error: "This endpoint has been deprecated.",
         message: "Use the transaction-safe API introduced in Phase 2."
     });
+});
+
+// 12b. Dashboard Summary Analytics (High-Performance Server-Side Aggregation)
+app.get('/api/reports/dashboard-summary', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
+    try {
+        const startDate = parseDateForDB(req.query.startDate) || null;
+        const endDate = parseDateForDB(req.query.endDate) || null;
+
+        // Run parallel queries across PostgreSQL
+        const [
+            salesAggRes,
+            returnsAggRes,
+            purchasesAggRes,
+            purchaseReturnsAggRes,
+            customerPendingRes,
+            vendorPendingRes,
+            valuationRes,
+            topSellingRes,
+            categoryRes,
+            monthlyRes,
+            debtorsRes,
+            recentInvoicesRes,
+            recentPaymentsRes
+        ] = await Promise.all([
+            // 1. Sales Aggregation
+            pool.query(`
+                SELECT COALESCE(SUM(amount), 0)::numeric as "totalSalesAmount", COUNT(*)::int as "salesCount"
+                FROM sales_invoices
+                WHERE status != 'CANCELLED' 
+                  AND ($1::date IS NULL OR date >= $1::date) 
+                  AND ($2::date IS NULL OR date <= $2::date)
+            `, [startDate, endDate]),
+
+            // 2. Returns Aggregation
+            pool.query(`
+                SELECT COALESCE(SUM(grand_total), 0)::numeric as "totalSalesReturnAmount", COUNT(*)::int as "salesReturnCount"
+                FROM sales_returns
+                WHERE status != 'CANCELLED' 
+                  AND ($1::date IS NULL OR date >= $1::date) 
+                  AND ($2::date IS NULL OR date <= $2::date)
+            `, [startDate, endDate]),
+
+            // 3. Purchases Aggregation
+            pool.query(`
+                SELECT COALESCE(SUM(amount), 0)::numeric as "totalPurchaseAmount", COUNT(*)::int as "purchaseCount"
+                FROM purchase_invoices
+                WHERE status != 'CANCELLED' 
+                  AND ($1::date IS NULL OR date >= $1::date) 
+                  AND ($2::date IS NULL OR date <= $2::date)
+            `, [startDate, endDate]),
+
+            // 3b. Purchase Returns Aggregation
+            pool.query(`
+                SELECT COALESCE(SUM(grand_total), 0)::numeric as "totalPurchaseReturnAmount", COUNT(*)::int as "purchaseReturnCount"
+                FROM purchase_returns
+                WHERE status != 'CANCELLED' 
+                  AND ($1::date IS NULL OR date >= $1::date) 
+                  AND ($2::date IS NULL OR date <= $2::date)
+            `, [startDate, endDate]),
+
+            // 4. Global Customer Pending
+            pool.query(`
+                SELECT 
+                    (SELECT COALESCE(SUM(pending_to_receive), 0) FROM sales_invoices WHERE status != 'CANCELLED') +
+                    (SELECT COALESCE(SUM(opening_balance), 0) FROM customers) as "globalCustomerPending"
+            `),
+
+            // 5. Global Vendor Pending
+            pool.query(`
+                SELECT 
+                    (SELECT COALESCE(SUM(pending_to_pay), 0) FROM purchase_invoices WHERE status != 'CANCELLED') +
+                    (SELECT COALESCE(SUM(opening_balance), 0) FROM vendors) as "globalVendorPending"
+            `),
+
+            // 6. Inventory Valuation
+            pool.query(`
+                SELECT COALESCE(SUM(stock * purchase_price), 0)::numeric as "inventoryValuation" 
+                FROM items
+            `),
+
+            // 7. Top Selling Products
+            pool.query(`
+                SELECT 
+                    COALESCE(elem->>'code', elem->'item'->>'code') as code,
+                    COALESCE(elem->>'name', elem->'item'->>'name', 'Product') as name,
+                    SUM(COALESCE((elem->>'qty')::numeric, (elem->>'quantity')::numeric, 0))::numeric as qty,
+                    SUM(COALESCE((elem->>'qty')::numeric, (elem->>'quantity')::numeric, 0) * COALESCE((elem->>'rate')::numeric, (elem->>'price')::numeric, 0))::numeric as total
+                FROM sales_invoices,
+                LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) as elem
+                WHERE status != 'CANCELLED'
+                  AND ($1::date IS NULL OR date >= $1::date)
+                  AND ($2::date IS NULL OR date <= $2::date)
+                GROUP BY 1, 2
+                ORDER BY total DESC
+                LIMIT 5
+            `, [startDate, endDate]),
+
+            // 8. Category Breakdown
+            pool.query(`
+                SELECT 
+                    COALESCE(i.category_name, 'General') as category,
+                    SUM(COALESCE((elem->>'qty')::numeric, (elem->>'quantity')::numeric, 0) * COALESCE((elem->>'rate')::numeric, (elem->>'price')::numeric, 0))::numeric as amount
+                FROM sales_invoices s,
+                LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(s.items) = 'array' THEN s.items ELSE '[]'::jsonb END) as elem
+                LEFT JOIN items i ON i.code = COALESCE(elem->>'code', elem->'item'->>'code')
+                WHERE s.status != 'CANCELLED'
+                  AND ($1::date IS NULL OR s.date >= $1::date)
+                  AND ($2::date IS NULL OR s.date <= $2::date)
+                GROUP BY 1
+                ORDER BY amount DESC
+                LIMIT 5
+            `, [startDate, endDate]),
+
+            // 9. Monthly Cash Flow (Last 6 Months)
+            pool.query(`
+                WITH months AS (
+                    SELECT generate_series(
+                        date_trunc('month', CURRENT_DATE) - INTERVAL '5 months',
+                        date_trunc('month', CURRENT_DATE),
+                        INTERVAL '1 month'
+                    )::date as m_start
+                )
+                SELECT 
+                    to_char(m.m_start, 'Mon') as label,
+                    COALESCE((SELECT SUM(amount) FROM sales_invoices WHERE date_trunc('month', date) = m.m_start AND status != 'CANCELLED'), 0)::numeric as sales,
+                    COALESCE((SELECT SUM(amount) FROM purchase_invoices WHERE date_trunc('month', date) = m.m_start AND status != 'CANCELLED'), 0)::numeric as purchases
+                FROM months m
+                ORDER BY m.m_start ASC
+            `),
+
+            // 10. Top Debtors
+            pool.query(`
+                WITH inv_dues AS (
+                    SELECT customer_id, customer_name, SUM(pending_to_receive) as inv_pending, SUM(amount) as total_purchases
+                    FROM sales_invoices 
+                    WHERE status != 'CANCELLED'
+                    GROUP BY customer_id, customer_name
+                )
+                SELECT 
+                    c.id,
+                    c.customer_name as name,
+                    c.phone_number as mobile,
+                    COALESCE(inv.total_purchases, 0)::numeric as "totalPurchases",
+                    (COALESCE(inv.inv_pending, 0) + COALESCE(c.opening_balance, 0))::numeric as pending
+                FROM customers c
+                LEFT JOIN inv_dues inv ON inv.customer_id = c.id
+                WHERE (COALESCE(inv.inv_pending, 0) + COALESCE(c.opening_balance, 0)) > 0
+                ORDER BY pending DESC
+                LIMIT 5
+            `),
+
+            // 11. Recent Invoices (Latest 5, active)
+            pool.query(`
+                SELECT 
+                    id, invoice_no as "invoiceNumber", date, customer_name as "customerName", 
+                    amount as "grandTotal", paid_amount as "receivedAmount", pending_to_receive as "pendingToReceive", status
+                FROM sales_invoices
+                WHERE status != 'CANCELLED'
+                ORDER BY date DESC, id DESC
+                LIMIT 5
+            `),
+
+            // 12. Recent Payments (Latest 5, active)
+            pool.query(`
+                SELECT 
+                    cr.id, cr.receipt_no as "receiptNo", cr.date, c.customer_name as "customerName",
+                    cr.amount, cr.payment_mode as "paymentMode", cr.status
+                FROM customer_receipts cr
+                LEFT JOIN customers c ON c.id = cr.customer_id
+                WHERE cr.status != 'CANCELLED'
+                ORDER BY cr.date DESC, cr.id DESC
+                LIMIT 5
+            `)
+        ]);
+
+        const totalSalesAmount = parseFloat(salesAggRes.rows[0]?.totalSalesAmount) || 0;
+        const totalSalesReturnAmount = parseFloat(returnsAggRes.rows[0]?.totalSalesReturnAmount) || 0;
+        const netSales = Math.max(0, totalSalesAmount - totalSalesReturnAmount);
+        const totalPurchaseAmount = parseFloat(purchasesAggRes.rows[0]?.totalPurchaseAmount) || 0;
+        const totalPurchaseReturnAmount = parseFloat(purchaseReturnsAggRes.rows[0]?.totalPurchaseReturnAmount) || 0;
+        const globalCustomerPending = parseFloat(customerPendingRes.rows[0]?.globalCustomerPending) || 0;
+        const globalVendorPending = parseFloat(vendorPendingRes.rows[0]?.globalVendorPending) || 0;
+        const inventoryValuation = parseFloat(valuationRes.rows[0]?.inventoryValuation) || 0;
+
+        // Process Category Breakdown with percentages & colors
+        const catColors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1'];
+        const totalCatRev = categoryRes.rows.reduce((acc, r) => acc + parseFloat(r.amount || 0), 0) || 1;
+        const categoryBreakdown = categoryRes.rows.map((row, idx) => {
+            const amt = parseFloat(row.amount) || 0;
+            return {
+                category: row.category,
+                amount: amt,
+                percentage: Math.round((amt / totalCatRev) * 100),
+                color: catColors[idx % catColors.length]
+            };
+        });
+
+        // Process Monthly Comparison
+        const monthlyMonths = monthlyRes.rows.map(r => ({
+            label: r.label,
+            sales: parseFloat(r.sales) || 0,
+            purchases: parseFloat(r.purchases) || 0
+        }));
+        const maxVal = Math.max(...monthlyMonths.map(m => Math.max(m.sales, m.purchases)), 1000);
+
+        // Format Recent Invoices Dates
+        const recentInvoices = recentInvoicesRes.rows.map(s => {
+            if (s.date) {
+                const d = new Date(s.date);
+                s.date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+            }
+            s.grandTotal = parseFloat(s.grandTotal) || 0;
+            s.receivedAmount = parseFloat(s.receivedAmount) || 0;
+            s.pendingToReceive = parseFloat(s.pendingToReceive) || 0;
+            return s;
+        });
+
+        // Format Recent Payments Dates
+        const recentPayments = recentPaymentsRes.rows.map(p => {
+            if (p.date) {
+                const d = new Date(p.date);
+                p.date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+            }
+            p.amount = parseFloat(p.amount) || 0;
+            return p;
+        });
+
+        const topDebtors = debtorsRes.rows.map(d => ({
+            id: d.id,
+            name: d.name,
+            mobile: d.mobile || '-',
+            totalPurchases: parseFloat(d.totalPurchases) || 0,
+            pending: parseFloat(d.pending) || 0
+        }));
+
+        const topSellingProducts = topSellingRes.rows.map(p => ({
+            code: p.code,
+            name: p.name,
+            qty: parseFloat(p.qty) || 0,
+            total: parseFloat(p.total) || 0
+        }));
+
+        res.json({
+            success: true,
+            summary: {
+                totalSalesAmount,
+                salesCount: parseInt(salesAggRes.rows[0]?.salesCount) || 0,
+                totalSalesReturnAmount,
+                salesReturnCount: parseInt(returnsAggRes.rows[0]?.salesReturnCount) || 0,
+                netSales,
+                totalPurchaseAmount,
+                purchaseCount: parseInt(purchasesAggRes.rows[0]?.purchaseCount) || 0,
+                totalPurchaseReturnAmount,
+                purchaseReturnCount: parseInt(purchaseReturnsAggRes.rows[0]?.purchaseReturnCount) || 0,
+                globalCustomerPending,
+                globalVendorPending,
+                inventoryValuation,
+                topSellingProducts,
+                categoryBreakdown,
+                monthlyComparison: {
+                    months: monthlyMonths,
+                    maxVal
+                },
+                topDebtors,
+                recentInvoices,
+                recentPayments
+            }
+        });
+    } catch (err) {
+        sendError(res, err, 'Failed to generate dashboard summary');
+    }
 });
 
 // 13. AI Invoice Extraction
@@ -3249,10 +4304,18 @@ const upload = multer({
     }
 });
 
-app.post('/api/ai/extract-invoice', (req, res, next) => {
-    upload.single('invoiceFile')(req, res, (err) => {
+// Circuit breaker for failed Gemini models (e.g. 404 Not Found, 400 Invalid)
+const disabledGeminiModels = new Set();
+
+app.post('/api/ai/extract-invoice', requireRole(['ADMIN', 'ACCOUNTANT']), (req, res, next) => {
+    upload.fields([{ name: 'invoiceFile', maxCount: 1 }, { name: 'invoice', maxCount: 1 }])(req, res, (err) => {
         if (err) {
             return res.status(400).json({ error: err.message });
+        }
+        if (req.files) {
+            req.file = (req.files['invoiceFile'] && req.files['invoiceFile'][0]) || 
+                       (req.files['invoice'] && req.files['invoice'][0]) || 
+                       null;
         }
         next();
     });
@@ -3268,14 +4331,21 @@ app.post('/api/ai/extract-invoice', (req, res, next) => {
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
-        // Robust Fallback Array: Try these models in order if one fails (404, 503, etc.)
-        const modelsToTry = [
+        // Robust Fallback Array with verified official models
+        const verifiedModels = [
             process.env.GEMINI_MODEL,
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-2.0-flash"
-        ].filter(Boolean); // removes undefined if GEMINI_MODEL isn't set
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ].filter(Boolean);
+
+        let modelsToTry = verifiedModels.filter(m => !disabledGeminiModels.has(m));
+        if (modelsToTry.length === 0) {
+            // Reset circuit breaker if all models were temporarily marked disabled
+            disabledGeminiModels.clear();
+            modelsToTry = verifiedModels;
+        }
 
         const prompt = `You are an expert accounting assistant. Extract the structured invoice data from the provided image or PDF.
 Return ONLY a valid JSON object matching the following structure:
@@ -3309,17 +4379,40 @@ Do not include any markdown formatting like \`\`\`json. Return only the raw JSON
                 break; // Success! Exit the loop.
             } catch (err) {
                 console.warn(`Model ${modelName} failed:`, err.message);
+                if (err.message && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('400') || err.message.includes('is not supported'))) {
+                    disabledGeminiModels.add(modelName);
+                }
                 lastError = err;
             }
         }
 
         if (!responseResult) {
-            throw new Error(`All fallback AI models failed. Last error: ${lastError.message}`);
+            throw new Error(`All fallback AI models failed. Last error: ${lastError ? lastError.message : 'Unknown error'}`);
         }
 
-        let jsonString = responseResult.response.text();
-        jsonString = jsonString.replace(/^```json\n?/, '').replace(/```\n?$/, '').trim();
-        const extractedData = JSON.parse(jsonString);
+        const rawText = responseResult.response.text();
+        const firstBrace = rawText.indexOf('{');
+        const lastBrace = rawText.lastIndexOf('}');
+
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+            return res.status(422).json({ error: "AI model response did not contain a valid JSON object" });
+        }
+
+        const jsonSubstring = rawText.substring(firstBrace, lastBrace + 1);
+        let extractedData;
+        try {
+            extractedData = JSON.parse(jsonSubstring);
+        } catch (parseErr) {
+            return res.status(422).json({
+                error: "Failed to parse extracted invoice JSON from AI model",
+                details: parseErr.message
+            });
+        }
+
+        // Schema validation: ensure required financial nodes exist
+        if (!extractedData || typeof extractedData !== 'object' || (!extractedData.vendor && !extractedData.invoice && !extractedData.items)) {
+            return res.status(422).json({ error: "Extracted invoice is missing required financial fields (vendor, invoice, items)" });
+        }
 
         res.json({ success: true, data: extractedData });
     } catch (error) {
@@ -3328,7 +4421,7 @@ Do not include any markdown formatting like \`\`\`json. Return only the raw JSON
 });
 
 // 1. POST /api/receipts/:id/cancel
-app.post('/api/receipts/:id/cancel', async (req, res) => {
+app.post('/api/receipts/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const receiptId = req.params.id;
     const { reason } = req.body;
@@ -3380,22 +4473,27 @@ app.post('/api/receipts/:id/cancel', async (req, res) => {
             invMap = new Map(invRes.rows.map(r => [r.id, r]));
         }
 
-        // 3. Lock Customer row (Lock 3)
-        const custRes = await client.query(
-            "SELECT id, pending_to_receive, customer_advance_balance FROM customers WHERE id = $1 FOR UPDATE",
-            [receipt.customer_id]
-        );
-        if (custRes.rows.length === 0) {
-            throw new Error('Customer not found');
+        // 3. Lock Customer row (Lock 3) if registered customer
+        let customer = null;
+        if (receipt.customer_id && String(receipt.customer_id) !== 'walk-in') {
+            const custRes = await client.query(
+                "SELECT id, pending_to_receive, customer_advance_balance FROM customers WHERE id = $1 FOR UPDATE",
+                [receipt.customer_id]
+            );
+            if (custRes.rows.length === 0) {
+                throw new Error('Customer not found');
+            }
+            customer = custRes.rows[0];
         }
-        const customer = custRes.rows[0];
 
         const receiptAdvanceAmt = parseFloat(receipt.advance_amount) || 0;
 
         // Invariant check: customer advance balance must be sufficient to revert if advance was granted
-        const currentCustAdvance = parseFloat(customer.customer_advance_balance) || 0;
-        if (receiptAdvanceAmt > 0 && currentCustAdvance < receiptAdvanceAmt) {
-            throw new Error(`Insufficient customer advance balance. Available: ${currentCustAdvance}, Required: ${receiptAdvanceAmt}`);
+        if (customer && receiptAdvanceAmt > 0) {
+            const currentCustAdvance = parseFloat(customer.customer_advance_balance) || 0;
+            if (currentCustAdvance < receiptAdvanceAmt) {
+                throw new Error(`Insufficient customer advance balance. Available: ${currentCustAdvance}, Required: ${receiptAdvanceAmt}`);
+            }
         }
 
         // 4. Perform reversals
@@ -3415,15 +4513,17 @@ app.post('/api/receipts/:id/cancel', async (req, res) => {
                 [totalReversal, inv.id]
             );
             
-            // Revert Customer outstanding receivable
-            await client.query(
-                "UPDATE customers SET pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2",
-                [totalReversal, customer.id]
-            );
+            // Revert Customer outstanding receivable if registered customer
+            if (customer) {
+                await client.query(
+                    "UPDATE customers SET pending_to_receive = COALESCE(pending_to_receive, 0) + $1 WHERE id = $2",
+                    [totalReversal, customer.id]
+                );
+            }
         }
 
         // Revert Customer Advance Balance if applicable
-        if (receiptAdvanceAmt > 0) {
+        if (customer && receiptAdvanceAmt > 0) {
             await client.query(
                 "UPDATE customers SET customer_advance_balance = COALESCE(customer_advance_balance, 0) - $1 WHERE id = $2",
                 [receiptAdvanceAmt, customer.id]
@@ -3455,15 +4555,15 @@ app.post('/api/receipts/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Customer receipt cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel customer receipt' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel customer receipt') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 2. POST /api/vendor-payments/:id/cancel
-app.post('/api/vendor-payments/:id/cancel', async (req, res) => {
+app.post('/api/vendor-payments/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const paymentId = req.params.id;
     const { reason } = req.body;
@@ -3574,16 +4674,16 @@ app.post('/api/vendor-payments/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Vendor payment cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel vendor payment' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel vendor payment') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 3. POST /api/sales-returns/:id/cancel
 // PUT /api/sales-returns/:id (Full Edit)
-app.put('/api/sales-returns/:id', async (req, res) => {
+app.put('/api/sales-returns/:id', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const returnId = req.params.id;
     const {
@@ -3682,7 +4782,7 @@ app.put('/api/sales-returns/:id', async (req, res) => {
         const itemIds = Array.from(itemDeltas.keys()).sort();
         if (itemIds.length > 0) {
             const dbItemsRes = await client.query(
-                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`,
+                `SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY code ASC FOR UPDATE`,
                 [itemIds]
             );
 
@@ -3738,14 +4838,14 @@ app.put('/api/sales-returns/:id', async (req, res) => {
 
     } catch (e) {
         await client.query('ROLLBACK');
-        res.status(400).json({ error: e.message || 'Failed to update Sales Return' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to update Sales Return') });
     } finally {
         client.release();
     }
 });
 
 // PUT /api/purchase-returns/:id (Full Edit)
-app.put('/api/purchase-returns/:id', async (req, res) => {
+app.put('/api/purchase-returns/:id', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const returnId = req.params.id;
     const {
@@ -3816,7 +4916,7 @@ app.put('/api/purchase-returns/:id', async (req, res) => {
 
         const itemIds = Array.from(itemDeltas.keys()).sort();
         if (itemIds.length > 0) {
-            const dbItemsRes = await client.query(`SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE`, [itemIds]);
+            const dbItemsRes = await client.query(`SELECT id, code, name, stock FROM items WHERE id = ANY($1::text[]) ORDER BY code ASC FOR UPDATE`, [itemIds]);
             const dbItemsMap = new Map();
             dbItemsRes.rows.forEach(r => dbItemsMap.set(String(r.id), r));
 
@@ -3863,14 +4963,14 @@ app.put('/api/purchase-returns/:id', async (req, res) => {
 
     } catch (e) {
         await client.query('ROLLBACK');
-        res.status(400).json({ error: e.message || 'Failed to update Purchase Return' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to update Purchase Return') });
     } finally {
         client.release();
     }
 });
 
 
-app.post('/api/sales-returns/:id/cancel', async (req, res) => {
+app.post('/api/sales-returns/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const returnId = req.params.id;
     const { reason } = req.body;
@@ -3886,7 +4986,7 @@ app.post('/api/sales-returns/:id/cancel', async (req, res) => {
 
         // 1. Lock sales_returns row (Lock 1)
         const returnRes = await client.query(
-            "SELECT id, return_no, invoice_id, customer_id, store_credit, receivable_reduction, status, items FROM sales_returns WHERE id = $1 FOR UPDATE",
+            "SELECT id, return_no, invoice_id, customer_id, grand_total, store_credit, receivable_reduction, status, items FROM sales_returns WHERE id = $1 FOR UPDATE",
             [returnId]
         );
         if (returnRes.rows.length === 0) {
@@ -3965,7 +5065,16 @@ app.post('/api/sales-returns/:id/cancel', async (req, res) => {
                 pending_to_receive = COALESCE(pending_to_receive, 0) + $1,
                 store_credit_balance = COALESCE(store_credit_balance, 0) - $2
              WHERE id = $3`,
-            [parseFloat(salesReturn.receivable_reduction), storeCreditToRevert, customer.id]
+            [parseFloat(salesReturn.receivable_reduction) || 0, storeCreditToRevert, customer.id]
+        );
+
+        // Revert Original Sales Invoice balances
+        await client.query(
+            `UPDATE sales_invoices SET 
+                pending_to_receive = COALESCE(pending_to_receive, 0) + $1,
+                returned_amount    = COALESCE(returned_amount, 0) - $2
+             WHERE id = $3`,
+            [parseFloat(salesReturn.receivable_reduction) || 0, parseFloat(salesReturn.grand_total) || 0, salesReturn.invoice_id]
         );
 
         // Update Sales Return status
@@ -3979,12 +5088,11 @@ app.post('/api/sales-returns/:id/cancel', async (req, res) => {
             [cancelledBy, reason, returnId]
         );
 
-        
         await insertAuditLog(client, {
             tableName: 'sales_returns',
             recordId: returnId,
             action: 'CANCEL',
-            oldData: returnDoc,
+            oldData: salesReturn,
             newData: { status: 'CANCELLED', cancelled_by: cancelledBy, cancellation_reason: reason },
             req,
             transactionId
@@ -3993,15 +5101,15 @@ app.post('/api/sales-returns/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Sales Return cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel sales return' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel sales return') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 4. POST /api/purchase-returns/:id/cancel
-app.post('/api/purchase-returns/:id/cancel', async (req, res) => {
+app.post('/api/purchase-returns/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const returnId = req.params.id;
     const { reason } = req.body;
@@ -4017,7 +5125,7 @@ app.post('/api/purchase-returns/:id/cancel', async (req, res) => {
 
         // 1. Lock purchase_returns row (Lock 1)
         const returnRes = await client.query(
-            "SELECT id, return_no, invoice_id, vendor_id, vendor_credit, payable_reduction, status, items FROM purchase_returns WHERE id = $1 FOR UPDATE",
+            "SELECT id, return_no, invoice_id, vendor_id, grand_total, vendor_credit, payable_reduction, status, items FROM purchase_returns WHERE id = $1 FOR UPDATE",
             [returnId]
         );
         if (returnRes.rows.length === 0) {
@@ -4096,7 +5204,16 @@ app.post('/api/purchase-returns/:id/cancel', async (req, res) => {
                 pending_to_pay = COALESCE(pending_to_pay, 0) + $1,
                 vendor_credit_balance = COALESCE(vendor_credit_balance, 0) - $2
              WHERE id = $3`,
-            [parseFloat(purchaseReturn.payable_reduction), vendorCreditToRevert, vendor.id]
+            [parseFloat(purchaseReturn.payable_reduction) || 0, vendorCreditToRevert, vendor.id]
+        );
+
+        // Revert Original Purchase Invoice balances
+        await client.query(
+            `UPDATE purchase_invoices SET 
+                pending_to_pay  = COALESCE(pending_to_pay, 0) + $1,
+                returned_amount = COALESCE(returned_amount, 0) - $2
+             WHERE id = $3`,
+            [parseFloat(purchaseReturn.payable_reduction) || 0, parseFloat(purchaseReturn.grand_total) || 0, purchaseReturn.invoice_id]
         );
 
         // Update Purchase Return status
@@ -4110,12 +5227,11 @@ app.post('/api/purchase-returns/:id/cancel', async (req, res) => {
             [cancelledBy, reason, returnId]
         );
 
-        
         await insertAuditLog(client, {
             tableName: 'purchase_returns',
             recordId: returnId,
             action: 'CANCEL',
-            oldData: returnDoc,
+            oldData: purchaseReturn,
             newData: { status: 'CANCELLED', cancelled_by: cancelledBy, cancellation_reason: reason },
             req,
             transactionId
@@ -4124,15 +5240,15 @@ app.post('/api/purchase-returns/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Purchase Return cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel purchase return' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel purchase return') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 5. POST /api/sales/:id/cancel
-app.post('/api/sales/:id/cancel', async (req, res) => {
+app.post('/api/sales/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const { reason } = req.body;
@@ -4269,15 +5385,15 @@ app.post('/api/sales/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Sales Invoice cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel sales invoice' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel sales invoice') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // 6. POST /api/purchases/:id/cancel
-app.post('/api/purchases/:id/cancel', async (req, res) => {
+app.post('/api/purchases/:id/cancel', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const { reason } = req.body;
@@ -4401,7 +5517,7 @@ app.post('/api/purchases/:id/cancel', async (req, res) => {
         
         await insertAuditLog(client, {
             tableName: 'purchase_invoices',
-            recordId: purchaseId,
+            recordId: invoiceId,
             action: 'CANCEL',
             oldData: invoice,
             newData: { status: 'CANCELLED', cancelled_by: cancelledBy, cancellation_reason: reason },
@@ -4412,15 +5528,15 @@ app.post('/api/purchases/:id/cancel', async (req, res) => {
         res.json({ success: true, message: 'Purchase Invoice cancelled successfully' });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to cancel purchase invoice' });
+        await safeRollback(client);
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to cancel purchase invoice') });
     } finally {
-        client.release();
+        safeRelease(client);
     }
 });
 
 // PUT /api/sales/:id (Full Edit)
-app.put('/api/sales/:id', async (req, res) => {
+app.put('/api/sales/:id', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const {
@@ -4631,7 +5747,7 @@ app.put('/api/sales/:id', async (req, res) => {
         } else if (e.code === '55P03') {
             return res.status(400).json({ error: 'System is busy updating inventory for these items. Please try again.' });
         }
-        res.status(400).json({ error: e.message || 'Failed to update transaction' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to update transaction') });
     } finally {
         client.release();
     }
@@ -4639,7 +5755,7 @@ app.put('/api/sales/:id', async (req, res) => {
 
 
 // PATCH /api/sales/:id
-app.patch('/api/sales/:id', async (req, res) => {
+app.patch('/api/sales/:id', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const allowedFields = ['refNo', 'dueDate', 'paymentTerms', 'note'];
@@ -4723,14 +5839,14 @@ app.patch('/api/sales/:id', async (req, res) => {
 
     } catch (error) {
         await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to update sales invoice metadata' });
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to update sales invoice metadata') });
     } finally {
         client.release();
     }
 });
 
 // PUT /api/purchases/:id (Full Edit)
-app.put('/api/purchases/:id', async (req, res) => {
+app.put('/api/purchases/:id', requireRole(['ADMIN']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const {
@@ -4939,7 +6055,7 @@ app.put('/api/purchases/:id', async (req, res) => {
         } else if (e.code === '55P03') {
             return res.status(400).json({ error: 'System is busy updating inventory for these items. Please try again.' });
         }
-        res.status(400).json({ error: e.message || 'Failed to update transaction' });
+        res.status(400).json({ error: sanitizeClientError(e, 'Failed to update transaction') });
     } finally {
         client.release();
     }
@@ -4947,7 +6063,7 @@ app.put('/api/purchases/:id', async (req, res) => {
 
 
 // PATCH /api/purchases/:id
-app.patch('/api/purchases/:id', async (req, res) => {
+app.patch('/api/purchases/:id', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
     const transactionId = crypto.randomUUID();
     const invoiceId = req.params.id;
     const allowedFields = ['refNo', 'dueDate', 'paymentTerms', 'note'];
@@ -5031,7 +6147,7 @@ app.patch('/api/purchases/:id', async (req, res) => {
 
     } catch (error) {
         await client.query('ROLLBACK');
-        res.status(400).json({ error: error.message || 'Failed to update purchase invoice metadata' });
+        res.status(400).json({ error: sanitizeClientError(error, 'Failed to update purchase invoice metadata') });
     } finally {
         client.release();
     }

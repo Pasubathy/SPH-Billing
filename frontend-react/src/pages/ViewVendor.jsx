@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Edit3, Trash2, Search, Printer } from 'lucide-react';
 import DateFilterPopover from '../components/DateFilterPopover';
+import { printA4Document } from '../utils/a4Printer';
 
 const ViewVendor = () => {
     const { id } = useParams();
@@ -106,16 +107,21 @@ const ViewVendor = () => {
         vendor && (String(pr.vendorId) === String(vendor.id) || pr.vendorName === vendor.vendorName)
     );
 
-    const totalPurchased = vendorInvoices.reduce((s, pi) => s + (parseFloat(pi.amount) || 0), 0);
-    const directPaid = vendorInvoices.reduce((s, pi) => s + (parseFloat(pi.paidAmount || pi.paid_amount || 0)), 0);
-    const totalPaid = directPaid + vendorPmts.reduce((s, p) => s + calcActualPmt(p), 0);
-    const totalReturned = vendorReturns.reduce((s, pr) => s + (parseFloat(pr.grandTotal || pr.totalAmount) || 0), 0);
+    const activeVendorInvoices = vendorInvoices.filter(pi => pi.status !== 'CANCELLED');
+    const activeVendorPmts = vendorPmts.filter(p => p.status !== 'CANCELLED');
+    const activeVendorReturns = vendorReturns.filter(pr => pr.status !== 'CANCELLED');
+
+    const totalPurchased = activeVendorInvoices.reduce((s, pi) => s + (parseFloat(pi.amount) || 0), 0);
+    const directPaid = activeVendorInvoices.reduce((s, pi) => s + (parseFloat(pi.paidAmount || pi.paid_amount || 0)), 0);
+    const totalPaid = directPaid + activeVendorPmts.reduce((s, p) => s + calcActualPmt(p), 0);
+    const totalReturned = activeVendorReturns.reduce((s, pr) => s + (parseFloat(pr.grandTotal || pr.totalAmount) || 0), 0);
     const openingBal = parseFloat(vendor?.openingBalance || vendor?.opening_balance || 0);
     const pendingToPay = Math.max(0, openingBal + totalPurchased - totalPaid - totalReturned);
 
     // All transactions combined
     const allTransactions = [
         ...vendorInvoices.map(pi => {
+            const isCancelled = pi.status === 'CANCELLED';
             const amt = parseFloat(pi.amount) || 0;
             const due = parseFloat(pi.pendingToPay) || 0;
             return {
@@ -124,13 +130,15 @@ const ViewVendor = () => {
                 type: 'Purchase Invoice',
                 transactionNo: pi.piNo || '-',
                 amount: amt,
-                dueAmount: due,
+                dueAmount: isCancelled ? 0 : due,
                 isDebit: true,
-                status: due === 0 ? 'Paid' : 'Pending',
+                status: isCancelled ? 'Cancelled' : (due === 0 ? 'Paid' : 'Pending'),
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(pi.date),
             };
         }),
         ...vendorPmts.map(p => {
+            const isCancelled = p.status === 'CANCELLED';
             const amt = calcActualPmt(p);
             return {
                 id: p.id || p.pmtNo,
@@ -140,16 +148,19 @@ const ViewVendor = () => {
                 amount: amt,
                 dueAmount: 0,
                 isDebit: false,
-                status: 'Completed',
+                status: isCancelled ? 'Cancelled' : 'Completed',
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(p.date),
             };
         }),
         ...vendorReturns.map(pr => {
+            const isCancelled = pr.status === 'CANCELLED';
             const amt = parseFloat(pr.grandTotal || pr.totalAmount) || 0;
             const refundAmt = parseFloat(pr.refundAmount) || 0;
             const storeCred = parseFloat(pr.storeCredit) || 0;
             let status = 'Credited';
-            if (pr.refundMode === 'Adjust against Invoice' || pr.isAdjusted) status = 'Adjusted';
+            if (isCancelled) status = 'Cancelled';
+            else if (pr.refundMode === 'Adjust against Invoice' || pr.isAdjusted) status = 'Adjusted';
             else if (refundAmt > 0 && storeCred === 0) status = 'Returned';
             else if (storeCred > 0 || pr.refundMode === 'Store Credit' || refundAmt === 0) status = 'Credited';
             return {
@@ -161,6 +172,7 @@ const ViewVendor = () => {
                 dueAmount: 0,
                 isDebit: false,
                 status,
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(pr.date),
             };
         }),
@@ -170,7 +182,7 @@ const ViewVendor = () => {
     const stmtStartDate = statementDateFilter ? statementDateFilter.start : new Date(2000, 0, 1);
     const stmtEndDate = statementDateFilter ? statementDateFilter.end : new Date(new Date().getFullYear() + 5, 11, 31, 23, 59, 59);
 
-    const chronoTx = [...allTransactions].sort((a, b) => a.rawDate - b.rawDate);
+    const chronoTx = allTransactions.filter(tx => !tx.isCancelled).sort((a, b) => a.rawDate - b.rawDate);
     let openingBalance = parseFloat(vendor?.openingBalance || 0);
     const openingTx = chronoTx.filter(tx => tx.rawDate < stmtStartDate);
     openingTx.forEach(tx => {
@@ -258,11 +270,7 @@ const ViewVendor = () => {
                 </tfoot>
             </table>
         </body></html>`;
-        const w = window.open('', '_blank');
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        setTimeout(() => w.print(), 400);
+        printA4Document(html, 'Vendor Statement');
     };
 
     const handleDelete = async () => {
@@ -295,6 +303,7 @@ const ViewVendor = () => {
         const map = {
             'Paid':      { bg: '#DCFCE7', color: '#15803D' },
             'Pending':   { bg: '#FEE2E2', color: '#B91C1C' },
+            'Cancelled': { bg: '#FEE2E2', color: '#991B1B' },
             'Completed': { bg: '#DBEAFE', color: '#1D4ED8' },
             'Credited':  { bg: '#EDE9FE', color: '#6D28D9' },
             'Returned':  { bg: '#DBEAFE', color: '#1D4ED8' },
@@ -342,9 +351,9 @@ const ViewVendor = () => {
                     ) : (
                         filteredVendors.map(v => {
                             const isSelected = String(v.id) === String(vendor.id);
-                            const vInvoices = purchaseInvoices.filter(pi => String(pi.vendorId) === String(v.id) || pi.vendorName === v.vendorName);
-                            const vPmts = vendorPayments.filter(p => String(p.vendorId) === String(v.id) || p.vendorName === v.vendorName);
-                            const vReturns = purchaseReturns.filter(pr => String(pr.vendorId) === String(v.id) || pr.vendorName === v.vendorName);
+                            const vInvoices = purchaseInvoices.filter(pi => (String(pi.vendorId) === String(v.id) || pi.vendorName === v.vendorName) && pi.status !== 'CANCELLED');
+                            const vPmts = vendorPayments.filter(p => (String(p.vendorId) === String(v.id) || p.vendorName === v.vendorName) && p.status !== 'CANCELLED');
+                            const vReturns = purchaseReturns.filter(pr => (String(pr.vendorId) === String(v.id) || pr.vendorName === v.vendorName) && pr.status !== 'CANCELLED');
                             const vTotal = vInvoices.reduce((s, pi) => s + (parseFloat(pi.amount) || 0), 0);
                             const vDirectPaid = vInvoices.reduce((s, pi) => s + (parseFloat(pi.paidAmount || pi.paid_amount || 0)), 0);
                             const vPaid = vDirectPaid + vPmts.reduce((s, p) => s + calcActualPmt(p), 0);

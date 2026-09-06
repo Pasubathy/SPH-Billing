@@ -66,29 +66,34 @@ const PurchaseInvoice = () => {
     let totalPending = 0;
 
     const invoiceRows = filteredInvoices.map((pi, idx) => {
+        const isCanc = pi.status === 'CANCELLED';
         const amt = parseFloat(pi.amount) || 0;
-        const pend = parseFloat(pi.pendingToPay) || 0;
+        const pend = isCanc ? 0 : (parseFloat(pi.pendingToPay) || 0);
         
-        totalPurchase += amt;
-        totalPending += pend;
+        if (!isCanc) {
+            totalPurchase += amt;
+            totalPending += pend;
+        }
 
         const isPaid = pend === 0;
 
         return (
-            <tr key={pi.id || idx} style={{ height: '40px' }}>
+            <tr key={pi.id || idx} style={{ height: '40px', opacity: isCanc ? 0.75 : 1 }}>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{idx + 1}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{formatDate(pi.date)}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
-                    <Link to={`/purchase-invoice/view/${pi.id}`} style={{ color: '#2563EB', textDecoration: 'none', fontWeight: '500' }}>
+                    <Link to={`/purchase-invoice/view/${pi.id}`} style={{ color: isCanc ? '#64748B' : '#2563EB', textDecoration: isCanc ? 'line-through' : 'none', fontWeight: '500' }}>
                         {pi.piNo || '-'}
                     </Link>
                 </td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{pi.vendorName || '-'}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>₹{amt.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: '#EF4444', fontWeight: '600' }}>₹{pend.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: isCanc ? 'var(--text-muted)' : '#EF4444', fontWeight: isCanc ? '400' : '600' }}>₹{pend.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{formatDate(pi.dueDate)}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px' }}>
-                    {isPaid ? (
+                    {isCanc ? (
+                        <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#64748B' }}>Cancelled</span>
+                    ) : isPaid ? (
                         <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#22C55E' }}>Paid</span>
                     ) : (
                         <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#EF4444' }}>Pending</span>

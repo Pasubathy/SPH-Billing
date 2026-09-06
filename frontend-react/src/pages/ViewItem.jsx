@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Search, X, Edit, Trash2, Printer, Eye, ChevronLeft, Package, ChevronRight } from 'lucide-react';
+import { printItemTags } from '../utils/a4Printer';
 
 const lblStyle = { fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '500', marginBottom: '4px' };
 const valStyle = { fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' };
@@ -142,7 +143,7 @@ export default function ViewItem() {
         tsData = {};
     }
     
-    // Save data to localStorage so the new tab can read it
+    // Save data to localStorage so if the user visits /print/tags directly, it still works
     localStorage.setItem('printItemData', JSON.stringify({
         item: activeItem,
         settings: tsData,
@@ -150,9 +151,19 @@ export default function ViewItem() {
         start: startPosition
     }));
     
-    // Open the new React-based print route
-    window.open('/print/tags', '_blank');
     setShowPrintModal(false);
+
+    // Execute isolated iframe print without unmanaged popup window
+    const result = await printItemTags({
+        item: activeItem,
+        settings: tsData,
+        copies: printCopies,
+        start: startPosition
+    });
+
+    if (!result.success) {
+        showToast(result.error || 'Failed to generate print layout', 'error');
+    }
   };
 
   const filteredItems = items.filter(item => {

@@ -1,20 +1,54 @@
+import { requestReauth } from './utils/sessionCoordinator';
+
 // Global fetch interceptor to attach Authorization token to all backend API calls
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
-    const token = localStorage.getItem('sph_auth_token');
-    // Inject auth token if it exists and request is to backend api
-    if (token && url.toString().includes('/api/')) {
-        options.headers = {
-            ...options.headers,
-            'Authorization': `Bearer ${token}`
-        };
+    // If this request is an explicit re-auth attempt from SessionExpiredModal, bypass interceptor
+    if (options._isReauthLogin) {
+        return await originalFetch(url, options);
     }
-    const response = await originalFetch(url, options);
+
+    const rawToken = localStorage.getItem('sph_auth_token');
+    const token = (rawToken && rawToken !== 'null' && rawToken !== 'undefined') ? rawToken.trim() : null;
     
-    // Redirect to login if token is expired/invalid (401 Unauthorized)
-    if (response.status === 401 && !url.toString().includes('/api/auth/login')) {
-        localStorage.removeItem('sph_auth_token');
-        window.location.href = '/login';
+    // Normalize headers object
+    const headers = { ...(options.headers || {}) };
+
+    // Clean up any accidental "Bearer null" or "Bearer undefined"
+    if (headers['Authorization'] === 'Bearer null' || headers['Authorization'] === 'Bearer undefined' || headers['Authorization'] === 'Bearer ') {
+        delete headers['Authorization'];
+    }
+
+    // Inject canonical auth token if it exists and request is to backend api
+    if (token && url.toString().includes('/api/') && !headers['Authorization']) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const requestOptions = { ...options, headers };
+    const response = await originalFetch(url, requestOptions);
+    
+    // Handle 401 Unauthorized session expirations gracefully WITHOUT destructive redirects
+    if (response.status === 401 && !url.toString().includes('/api/auth/login') && !options._isRetry) {
+        try {
+            // Trigger singleton reauth modal and await user credentials
+            const newToken = await requestReauth();
+            if (newToken) {
+                // Retry the exact failed mutation ONCE preserving the exact original Idempotency-Key
+                const retryHeaders = {
+                    ...headers,
+                    'Authorization': `Bearer ${newToken}`
+                };
+                return await originalFetch(url, {
+                    ...options,
+                    headers: retryHeaders,
+                    _isRetry: true
+                });
+            }
+        } catch (authErr) {
+            console.warn('Session re-authentication failed or cancelled; preserving active state.', authErr);
+            // Return original 401 without redirecting, keeping invoice component mounted
+            return response;
+        }
     }
     
     return response;

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Search, Plus, Trash2, FileText, Calendar, Scan, PlusSquare, XSquare, PauseCircle, XCircle, ChevronDown, ChevronUp, X, Check } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useCameraScanner } from '../utils/cameraScanner';
 import CustomSelect from '../components/CustomSelect';
 import CustomerModal from '../components/CustomerModal';
 import '../assets/css/sales.css';
+import { printThermalReceipt } from '../utils/thermalPrinter';
+import { useBarcodeScanner, handleSearchInputKeyDown } from '../utils/barcodeScanner';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 
@@ -203,6 +205,7 @@ export default function CreateSalesInvoice() {
   // State for invoice
   const [invoiceNumber, setInvoiceNumber] = useState('INV001');
   const [billingDate, setBillingDate] = useState('');
+  const [formIdempotencyKey, setFormIdempotencyKey] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random()));
   
   // State for billing workspace
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,57 +223,26 @@ export default function CreateSalesInvoice() {
     setTimeout(() => setToast(null), 3000);
   };
   
-  // Scanner State
-  const [showScanner, setShowScanner] = useState(false);
-  const html5QrCodeRef = useRef(null);
+  // Global USB Barcode Scanner Wedge Hook
+  useBarcodeScanner({
+    allItems,
+    onScanItem: (code) => addItemByCode(code),
+    showToast,
+    enabled: true
+  });
+  
+  // Camera Barcode Scanner Hook
+  const {
+    isScannerOpen: showScanner,
+    startScanner,
+    stopScanner
+  } = useCameraScanner({
+    elementId: 'billing-qr-reader',
+    onScan: (code) => addItemByCode(code),
+    showToast
+  });
 
-  const startScanner = () => {
-      setShowScanner(true);
-      setTimeout(async () => {
-          try {
-              const html5QrCode = new Html5Qrcode("billing-qr-reader");
-              html5QrCodeRef.current = html5QrCode;
-              
-              const devices = await Html5Qrcode.getCameras();
-              if (devices && devices.length > 0) {
-                  let cameraId = devices[0].id;
-                  const backCamera = devices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
-                  if (backCamera) {
-                      cameraId = backCamera.id;
-                  }
-                  
-                  await html5QrCode.start(
-                      cameraId,
-                      { fps: 10, qrbox: { width: 250, height: 250 } },
-                      (decodedText) => {
-                          addItemByCode(decodedText.trim());
-                          stopScanner();
-                      }
-                  );
-              } else {
-                  throw new Error("No cameras found in browser.");
-              }
-          } catch (err) {
-              console.error("Camera access failed:", err);
-              showToast("Camera not found or access denied.", "error");
-              stopScanner();
-          }
-      }, 300);
-  };
-
-  const stopScanner = () => {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-          html5QrCodeRef.current.stop().then(() => {
-              html5QrCodeRef.current.clear();
-              setShowScanner(false);
-          }).catch(err => {
-              console.error(err);
-              setShowScanner(false);
-          });
-      } else {
-          setShowScanner(false);
-      }
-  };// Received Amount state
+  // Received Amount state
   const [manualReceivedAmt, setManualReceivedAmt] = useState(null);
 
   // Customer Modal state
@@ -538,14 +510,20 @@ export default function CreateSalesInvoice() {
             // Store Credit: send apply-intent and advisory amount; backend validates from DB
             applyStoreCredit: applyCredit && (activeCustomer?.id !== 'walk-in') ? true : false,
             requestedCredit: applyCredit ? appliedCreditAmt : 0,
+            idempotencyKey: location.state?.editMode ? undefined : formIdempotencyKey,
             updatedAt: location.state?.editMode ? location.state.invoiceData.updated_at : undefined
         };
 
         const targetEndpoint = location.state?.editMode ? `/api/sales/${location.state.invoiceData.id}` : '/api/sales/create';
 
+        const reqHeaders = { 'Content-Type': 'application/json' };
+        if (!location.state?.editMode && formIdempotencyKey) {
+            reqHeaders['Idempotency-Key'] = formIdempotencyKey;
+        }
+
         const saveRes = await fetch(targetEndpoint, {
             method: location.state?.editMode ? 'PUT' : 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: reqHeaders,
             body: JSON.stringify(payload)
         });
 
@@ -555,20 +533,66 @@ export default function CreateSalesInvoice() {
             throw new Error(resData.error || "Failed to save sales invoice");
         }
 
-        if (action === 'print') {
-            window.print();
-        }
-
         showToast("Sales Invoice saved successfully!", "success");
-        setTimeout(() => {
-            if (action === 'new') {
+
+        if (action === 'print') {
+            const receiptData = {
+                invoiceNumber: resData.invoiceNumber || invoiceNumber,
+                date: billingDate,
+                customerId: payload.customerId,
+                customerName: payload.customerName,
+                customerMobile: payload.customerMobile,
+                customerAddress: payload.customerAddress,
+                customerCity: payload.city,
+                customerState: payload.state,
+                customerPinCode: payload.pin,
+                items: billingRows.map(row => {
+                    const rowAmt = row.qty * row.rate;
+                    const finalAmt = rowAmt - (parseFloat(row.disc) || 0);
+                    const taxAmt = calcTaxAmt(finalAmt, row.taxPercent, row.sellingTaxType);
+                    return {
+                        code: row.item.code,
+                        name: row.item.name,
+                        hsn: row.item.hsn || '',
+                        qty: row.qty,
+                        unit: row.unitOptions[row.unitIndex]?.label || row.item.unit || '',
+                        rate: row.rate,
+                        disc: row.disc || 0,
+                        finalAmt: finalAmt,
+                        taxPercent: row.taxPercent || 0,
+                        taxAmount: taxAmt,
+                        totalAmt: finalAmt + taxAmt
+                    };
+                }),
+                subTotal: subTotal,
+                discount: totalDiscount,
+                taxAmount: totalTaxAmt,
+                grandTotal: grandTotal,
+                paidAmount: payload.receivedAmount,
+                creditBalance: activeCustomer?.credit || 0
+            };
+
+            // Print isolated thermal receipt
+            await printThermalReceipt(receiptData, 'invoice');
+
+            // Clean navigation without page reload
+            navigate('/sales#salesList', { replace: true, state: {} });
+        } else if (action === 'new') {
+            setBillingRows([]);
+            setManualReceivedAmt(null);
+            setDiscountVal(0);
+            setApplyCredit(false);
+            setFormIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random());
+            if (location.state?.editMode) {
                 navigate('/sales/create', { replace: true, state: {} });
-                window.location.reload();
             } else {
-                navigate('/sales#salesList', { replace: true, state: {} });
-                window.location.reload();
+                fetch('/api/invoice-counter').then(res => res.json()).catch(() => ({ counter: 1 })).then(counterData => {
+                    setInvoiceNumber('INV' + String(counterData.counter || 1).padStart(3, '0'));
+                });
             }
-        }, 1000);
+        } else {
+            navigate('/sales#salesList', { replace: true, state: {} });
+        }
 
     } catch (err) {
         console.error("Sales Invoice Save Error:", err);
@@ -645,10 +669,12 @@ export default function CreateSalesInvoice() {
                             <input 
                                 type="text" 
                                 className="billing-search-input" 
+                                data-barcode-search="true"
                                 placeholder="Search by Code, Item Name" 
                                 autoComplete="off" 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={(e) => handleSearchInputKeyDown(e, searchQuery, addItemByCode, allItems, () => setSearchQuery(''), showToast)}
                             />
                         </div>
                         <button className="billing-barcode-btn" onClick={startScanner} style={{ borderLeft: '1px solid var(--border-color)', background: '#F8FAFC' }}>

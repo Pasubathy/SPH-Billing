@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { printA4Document } from '../utils/a4Printer';
 import { 
     ArrowLeft, 
     Printer, 
@@ -25,10 +26,16 @@ const ViewVoucher = () => {
     const [voucher, setVoucher] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const voucherPaperRef = useRef(null);
 
     useEffect(() => {
         fetchVoucher();
     }, [id]);
+
+    const handlePrint = () => {
+        if (!voucherPaperRef.current || !voucher) return;
+        printA4Document(voucherPaperRef.current.innerHTML, `Voucher - ${voucher.voucherNo}`);
+    };
 
     const fetchVoucher = async () => {
         setLoading(true);
@@ -39,7 +46,9 @@ const ViewVoucher = () => {
                 setVoucher(data);
                 if (autoPrint) {
                     setTimeout(() => {
-                        window.print();
+                        if (voucherPaperRef.current) {
+                            printA4Document(voucherPaperRef.current.innerHTML, `Voucher - ${data.voucherNo}`);
+                        }
                     }, 500);
                 }
             } else {
@@ -50,10 +59,6 @@ const ViewVoucher = () => {
         } finally {
             setLoading(false);
         }
-    };
-
-    const handlePrint = () => {
-        window.print();
     };
 
     if (loading) {
@@ -167,6 +172,7 @@ const ViewVoucher = () => {
 
             {/* Printable Voucher Paper */}
             <div 
+                ref={voucherPaperRef}
                 className="voucher-paper"
                 style={{
                     backgroundColor: '#FFFFFF',

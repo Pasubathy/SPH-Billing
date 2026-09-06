@@ -3,8 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Sparkles, ChevronDown, Scan, Upload, FileText, Camera, Image as ImageIcon, X, Trash2 } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useCameraScanner } from '../utils/cameraScanner';
 import '../assets/css/sales.css';
+import { useBarcodeScanner, handleSearchInputKeyDown } from '../utils/barcodeScanner';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const textAreaStyle = { ...inputStyle, minHeight: '60px', paddingTop: '10px', resize: 'none' };
@@ -45,11 +46,20 @@ export default function CreatePurchaseInvoice() {
   const searchRef = useRef(null);
   const [activeDropdownRow, setActiveDropdownRow] = useState(null);
   
-  const [showScanner, setShowScanner] = useState(false);
-  const html5QrCodeRef = useRef(null);
+  // Camera Barcode Scanner Hook
+  const {
+    isScannerOpen: showScanner,
+    startScanner,
+    stopScanner
+  } = useCameraScanner({
+    elementId: 'billing-qr-reader',
+    onScan: (code) => addItemByCode(code),
+    showToast
+  });
 
   const [paidAmount, setPaidAmount] = useState('0');
   const [piNote, setPiNote] = useState('');
+  const [formIdempotencyKey, setFormIdempotencyKey] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random()));
 
   // AI Modal & Loading
   const [showAiModal, setShowAiModal] = useState(false);
@@ -61,6 +71,14 @@ export default function CreatePurchaseInvoice() {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
+  
+  // Global USB Barcode Scanner Wedge Hook
+  useBarcodeScanner({
+    allItems,
+    onScanItem: (code) => addItemByCode(code),
+    showToast,
+    enabled: true
+  });
   
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -236,15 +254,21 @@ export default function CreatePurchaseInvoice() {
         paidAmount: parsedPaid,
         items: items,
         manualPiNumber: null,
+        idempotencyKey: location.state?.editMode ? undefined : formIdempotencyKey,
         updatedAt: location.state?.editMode ? location.state.invoiceData.updated_at : undefined
       };
 
       const targetEndpoint = location.state?.editMode ? `/api/purchases/${location.state.invoiceData.id}` : '/api/purchases/create';
       const method = location.state?.editMode ? 'PUT' : 'POST';
 
+      const reqHeaders = { 'Content-Type': 'application/json' };
+      if (!location.state?.editMode && formIdempotencyKey) {
+        reqHeaders['Idempotency-Key'] = formIdempotencyKey;
+      }
+
       const saveRes = await fetch(targetEndpoint, {
         method: method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: reqHeaders,
         body: JSON.stringify(payload)
       });
 
@@ -370,52 +394,6 @@ export default function CreatePurchaseInvoice() {
   const triggerPdfUpload = () => fileInputRef.current && fileInputRef.current.click();
   const triggerImageUpload = () => imageInputRef.current && imageInputRef.current.click();
 
-  const startScanner = () => {
-      setShowScanner(true);
-      setTimeout(async () => {
-          try {
-              const html5QrCode = new Html5Qrcode("billing-qr-reader");
-              html5QrCodeRef.current = html5QrCode;
-              
-              const devices = await Html5Qrcode.getCameras();
-              if (devices && devices.length > 0) {
-                  let cameraId = devices[0].id;
-                  const backCamera = devices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
-                  if (backCamera) {
-                      cameraId = backCamera.id;
-                  }
-                  
-                  await html5QrCode.start(
-                      cameraId,
-                      { fps: 10, qrbox: { width: 250, height: 250 } },
-                      (decodedText) => {
-                          addItemByCode(decodedText.trim());
-                          stopScanner();
-                      }
-                  );
-              } else {
-                  throw new Error("No cameras found in browser.");
-              }
-          } catch (err) {
-              console.error("Camera access failed:", err);
-              stopScanner();
-          }
-      }, 300);
-  };
-
-  const stopScanner = () => {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-          html5QrCodeRef.current.stop().then(() => {
-              html5QrCodeRef.current.clear();
-              setShowScanner(false);
-          }).catch(err => {
-              console.error(err);
-              setShowScanner(false);
-          });
-      } else {
-          setShowScanner(false);
-      }
-  };
 
   const addItemByCode = (code) => {
     const item = allItems.find(i => String(i.code) === String(code));
@@ -622,6 +600,7 @@ export default function CreatePurchaseInvoice() {
                             <input 
                                 type="text" 
                                 className="billing-search-input" 
+                                data-barcode-search="true"
                                 placeholder="Search by Code, Item Name" 
                                 autoComplete="off" 
                                 value={searchQuery}
@@ -630,11 +609,10 @@ export default function CreatePurchaseInvoice() {
                                     setShowSearchDropdown(true);
                                 }}
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && searchResults.length > 0) {
-                                        addItemByCode(searchResults[0].code);
+                                    handleSearchInputKeyDown(e, searchQuery, addItemByCode, allItems, () => {
                                         setSearchQuery('');
                                         setShowSearchDropdown(false);
-                                    }
+                                    }, showToast);
                                 }}
                             />
                             {showSearchDropdown && searchResults.length > 0 && (

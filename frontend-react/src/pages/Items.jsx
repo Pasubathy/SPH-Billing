@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { Scan, Search, X, List, LayoutGrid, ChevronDown, Plus, Package, Tag, Check, Download } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useCameraScanner } from '../utils/cameraScanner';
 import CustomSelect from '../components/CustomSelect';
 
 const Items = () => {
@@ -12,8 +12,6 @@ const Items = () => {
     const [currentView, setCurrentView] = useState('grid');
     const [searchVal, setSearchVal] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
-    
-    const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -41,55 +39,17 @@ const Items = () => {
         loadInitialData();
     }, []);
 
-    const html5QrCodeRef = useRef(null);
-
-    const startScanner = () => {
-        setIsScannerOpen(true);
-        setTimeout(async () => {
-            try {
-                const html5QrCode = new Html5Qrcode("qr-reader-react");
-                html5QrCodeRef.current = html5QrCode;
-                
-                const devices = await Html5Qrcode.getCameras();
-                if (devices && devices.length > 0) {
-                    let cameraId = devices[0].id;
-                    const backCamera = devices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
-                    if (backCamera) {
-                        cameraId = backCamera.id;
-                    }
-                    
-                    await html5QrCode.start(
-                        cameraId,
-                        { fps: 10, qrbox: { width: 250, height: 250 } },
-                        (decodedText) => {
-                            setSearchVal(decodedText.trim());
-                            stopScanner();
-                        }
-                    );
-                } else {
-                    throw new Error("No cameras found in browser.");
-                }
-            } catch (err) {
-                console.error("Camera access failed:", err);
-                alert("Camera not found or access denied.");
-                stopScanner();
-            }
-        }, 300);
-    };
-
-    const stopScanner = () => {
-        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-            html5QrCodeRef.current.stop().then(() => {
-                html5QrCodeRef.current.clear();
-                setIsScannerOpen(false);
-            }).catch(err => {
-                console.error(err);
-                setIsScannerOpen(false);
-            });
-        } else {
-            setIsScannerOpen(false);
+    // Camera Barcode Scanner Hook
+    const {
+        isScannerOpen,
+        startScanner,
+        stopScanner
+    } = useCameraScanner({
+        elementId: 'qr-reader-react',
+        onScan: (decodedText) => {
+            setSearchVal(decodedText);
         }
-    };
+    });
 
     const getShortUnitName = (unitName) => {
         if (!unitName) return 'Unit';

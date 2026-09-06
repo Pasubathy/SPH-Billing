@@ -103,11 +103,17 @@ const Sales = () => {
         }
         
         if (statusFilter && statusFilter !== 'All') {
-            const amt = parseFloat(si.totalAmount || si.grandTotal) || 0;
-            const rec = parseFloat(si.paidAmount || si.receivedAmount) || 0;
-            const pend = Math.max(0, amt - rec);
-            if (statusFilter === 'Pending' && pend === 0) return false;
-            if (statusFilter === 'Paid' && pend > 0) return false;
+            const isCanc = si.status === 'CANCELLED';
+            if (statusFilter === 'Cancelled') {
+                if (!isCanc) return false;
+            } else {
+                if (isCanc) return false;
+                const amt = parseFloat(si.totalAmount || si.grandTotal) || 0;
+                const rec = parseFloat(si.paidAmount || si.receivedAmount) || 0;
+                const pend = Math.max(0, amt - rec);
+                if (statusFilter === 'Pending' && pend === 0) return false;
+                if (statusFilter === 'Paid' && pend > 0) return false;
+            }
         }
         
         return true;
@@ -117,12 +123,15 @@ const Sales = () => {
     let totalPending = 0;
 
     const invoiceRows = filteredInvoices.map((si, idx) => {
+        const isCanc = si.status === 'CANCELLED';
         const amt = parseFloat(si.totalAmount || si.grandTotal) || 0;
         const rec = parseFloat(si.paidAmount || si.receivedAmount) || 0;
-        const pend = Math.max(0, amt - rec);
+        const pend = isCanc ? 0 : Math.max(0, amt - rec);
         
-        totalAmount += amt;
-        totalPending += pend;
+        if (!isCanc) {
+            totalAmount += amt;
+            totalPending += pend;
+        }
 
         const isPaid = pend === 0;
 
@@ -130,22 +139,24 @@ const Sales = () => {
             <tr 
                 key={si.id || idx} 
                 onClick={() => setViewSale(si)}
-                style={{ height: '40px', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                style={{ height: '40px', cursor: 'pointer', transition: 'background-color 0.2s', opacity: isCanc ? 0.75 : 1 }}
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{idx + 1}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{formatDate(si.date)}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>
-                    <span style={{ color: '#2563EB', fontWeight: '500' }}>
+                    <span style={{ color: isCanc ? '#64748B' : '#2563EB', fontWeight: '500', textDecoration: isCanc ? 'line-through' : 'none' }}>
                         {si.invoiceNumber || si.invoiceNo || '-'}
                     </span>
                 </td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>{si.customerName || '-'}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px' }}>₹{amt.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: pend > 0 ? '#EF4444' : 'var(--text-main)', fontWeight: pend > 0 ? '600' : '400' }}>₹{pend.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', fontSize: '13px', color: isCanc ? 'var(--text-muted)' : (pend > 0 ? '#EF4444' : 'var(--text-main)'), fontWeight: pend > 0 ? '600' : '400' }}>₹{pend.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits:2})}</td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', borderRight: 'none', fontSize: '13px' }}>
-                    {isPaid ? (
+                    {isCanc ? (
+                        <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#64748B' }}>Cancelled</span>
+                    ) : isPaid ? (
                         <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#22C55E' }}>Paid</span>
                     ) : (
                         <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', color: 'white', textAlign: 'center', minWidth: '80px', boxSizing: 'border-box', backgroundColor: '#EF4444' }}>Pending</span>
@@ -176,6 +187,7 @@ const Sales = () => {
         let totalPending = 0;
         
         salesInvoices.forEach(si => {
+            if (si.status === 'CANCELLED') return;
             if ((si.customerName || '').toLowerCase() === cName) {
                 const amt = parseFloat(si.totalAmount || si.grandTotal) || 0;
                 const rec = parseFloat(si.paidAmount || si.receivedAmount) || 0;
@@ -344,7 +356,7 @@ const Sales = () => {
                             
                             <div style={{ width: '130px' }}>
                                 <CustomSelect 
-                                    options={[{value: 'All', label: 'All Status'}, {value: 'Pending', label: 'Pending'}, {value: 'Paid', label: 'Completed'}]}
+                                    options={[{value: 'All', label: 'All Status'}, {value: 'Pending', label: 'Pending'}, {value: 'Paid', label: 'Completed'}, {value: 'Cancelled', label: 'Cancelled'}]}
                                     value={statusFilter}
                                     onChange={(val) => setStatusFilter(val)}
                                     placeholder="All Status"

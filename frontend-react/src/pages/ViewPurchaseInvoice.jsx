@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ArrowLeft, Search, Printer, Download, Edit3, X, AlertTriangle, XCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { printA4Document } from '../utils/a4Printer';
 
 const ViewPurchaseInvoice = () => {
     const { id } = useParams();
@@ -95,10 +96,13 @@ const ViewPurchaseInvoice = () => {
         if (isCancelling) return;
         setIsCancelling(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const res = await fetch(`/api/purchases/${currentPI.id}/cancel`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify({ reason: cancelReason.trim() })
             });
             const data = await res.json();
@@ -112,7 +116,7 @@ const ViewPurchaseInvoice = () => {
             
             // Refresh from backend
             const refreshRes = await fetch('/api/purchase-invoices', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
             });
             if (refreshRes.ok) {
                 const freshPIs = await refreshRes.json();
@@ -142,7 +146,7 @@ const ViewPurchaseInvoice = () => {
         if (isSavingEdit) return;
         setIsSavingEdit(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const payload = {};
             if (editFields.refNo !== undefined) payload.refNo = editFields.refNo;
             if (editFields.dueDate !== undefined) payload.dueDate = editFields.dueDate;
@@ -151,7 +155,10 @@ const ViewPurchaseInvoice = () => {
 
             const res = await fetch(`/api/purchases/${currentPI.id}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
@@ -467,38 +474,9 @@ const ViewPurchaseInvoice = () => {
     };
 
     const handlePrint = () => {
-        if (!currentPI || !iframeRef.current) return;
+        if (!currentPI) return;
         const printContent = generateHTML(currentPI);
-
-        const html = `
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Print Purchase Invoice</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-                    <style>
-                        body { margin: 0; padding: 10px; font-family: 'Manrope', sans-serif; background: white; display: flex; justify-content: center; }
-                        @media print { 
-                            @page { margin: 4mm auto; size: A4 portrait; } 
-                            body { padding: 0; margin: 0; display: flex; justify-content: center; background: white; } 
-                            .pi-outer-box { box-shadow: none !important; padding: 12px !important; width: 100% !important; max-width: 100% !important; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${printContent}
-                    <script>
-                        window.onload = function() { setTimeout(function() { window.print(); }, 500); }
-                    </script>
-                </body>
-            </html>
-        `;
-        
-        const doc = iframeRef.current.contentWindow.document;
-        doc.open();
-        doc.write(html);
-        doc.close();
+        printA4Document(printContent, `Purchase Invoice - ${currentPI.invoiceNumber || currentPI.id}`);
     };
 
     return (

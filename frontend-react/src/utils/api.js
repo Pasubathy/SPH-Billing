@@ -6,7 +6,8 @@
  */
 
 export async function apiFetch(url, options = {}) {
-    const token = localStorage.getItem('sph_auth_token') || localStorage.getItem('token');
+    const rawToken = localStorage.getItem('sph_auth_token');
+    const token = (rawToken && rawToken !== 'null' && rawToken !== 'undefined') ? rawToken.trim() : null;
     
     const headers = {
         'Content-Type': 'application/json',
@@ -23,14 +24,7 @@ export async function apiFetch(url, options = {}) {
             headers
         });
 
-        if (response.status === 401 && !targetUrl.includes('/api/auth/login')) {
-            // Token expired or invalid
-            localStorage.removeItem('sph_auth_token');
-            if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
-            }
-        }
-
+        // Note: 401 session expiration and safe in-place retry are handled globally by window.fetch
         return response;
     } catch (err) {
         console.error(`API Fetch Error [${targetUrl}]:`, err);

@@ -77,10 +77,13 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
         if (isCancelling) return;
         setIsCancelling(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const res = await fetch(`/api/sales-returns/${currentSale.id}/cancel`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify({ reason: cancelReason.trim() })
             });
             const data = await res.json();
@@ -94,7 +97,7 @@ const ViewSalesReturnsInvoice = ({ initialSale, allSales: propAllSales, customer
 
             // Refresh from backend
             const refreshRes = await fetch('/api/sales-returns', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
             });
             if (refreshRes.ok) {
                 const freshReturns = await refreshRes.json();

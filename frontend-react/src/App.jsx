@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import SessionExpiredModal from './components/SessionExpiredModal';
 import './assets/css/style.css';
 import './assets/css/items-grid.css';
 import './assets/css/sales.css';
@@ -98,6 +99,7 @@ function App() {
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         </Routes>
       </Suspense>
+      <SessionExpiredModal />
     </Router>
   );
 }

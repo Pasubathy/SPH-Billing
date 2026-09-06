@@ -80,10 +80,13 @@ const ViewSalesInvoice = ({ initialSale, allSales, customers, onBack, onRefresh 
         if (isCancelling) return;
         setIsCancelling(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const res = await fetch(`/api/sales/${currentSale.id}/cancel`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify({ reason: cancelReason.trim() })
             });
             const data = await res.json();
@@ -96,7 +99,9 @@ const ViewSalesInvoice = ({ initialSale, allSales, customers, onBack, onRefresh 
             setShowCancelModal(false);
             setCancelReason('');
             // Refresh the record from backend
-            const refreshRes = await fetch(`/api/sales`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const refreshRes = await fetch(`/api/sales`, { 
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) } 
+            });
             if (refreshRes.ok) {
                 const freshSales = await refreshRes.json();
                 setLocalSales(freshSales || []);
@@ -126,7 +131,7 @@ const ViewSalesInvoice = ({ initialSale, allSales, customers, onBack, onRefresh 
         if (isSavingEdit) return;
         setIsSavingEdit(true);
         try {
-            const token = localStorage.getItem('authToken');
+            const token = localStorage.getItem('sph_auth_token');
             const payload = {};
             if (editFields.refNo !== undefined) payload.refNo = editFields.refNo;
             if (editFields.dueDate !== undefined) payload.dueDate = editFields.dueDate;
@@ -135,7 +140,10 @@ const ViewSalesInvoice = ({ initialSale, allSales, customers, onBack, onRefresh 
 
             const res = await fetch(`/api/sales/${currentSale.id}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();

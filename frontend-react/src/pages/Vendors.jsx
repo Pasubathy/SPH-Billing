@@ -41,8 +41,8 @@ const Vendors = () => {
     let totalVendorPurchase = 0;
 
     const vendorRows = filteredVendors.map((v, idx) => {
-        const vendorInvoices = purchaseInvoices.filter(pi => String(pi.vendorId) === String(v.id));
-        const vendorReturns = purchaseReturns.filter(pr => String(pr.vendorId) === String(v.id));
+        const vendorInvoices = purchaseInvoices.filter(pi => String(pi.vendorId) === String(v.id) && pi.status !== 'CANCELLED');
+        const vendorReturns = purchaseReturns.filter(pr => String(pr.vendorId) === String(v.id) && pr.status !== 'CANCELLED');
         
         let vendorPurchaseAmt = 0;
         let vendorPendingToPay = 0;

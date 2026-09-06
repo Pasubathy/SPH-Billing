@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, Plus, Trash2, Camera, Upload, Eye, Printer, X, Image as ImageIcon } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
+import { printItemTags } from '../utils/a4Printer';
 
 const inputStyle = { height: '38px', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 12px', fontFamily: 'inherit', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' };
 
@@ -322,18 +323,17 @@ export default function CreateItem() {
       }))
     };
 
-    let updatedItems;
-    if (editCodeParam) {
-      updatedItems = allItems.map(item => String(item.code) === String(editCodeParam) ? newItem : item);
-    } else {
-      updatedItems = [...allItems, newItem];
-    }
+    const existingItem = editCodeParam ? allItems.find(item => String(item.code) === String(editCodeParam)) : null;
+    const itemPayload = {
+      ...(existingItem?.id ? { id: existingItem.id } : {}),
+      ...newItem
+    };
 
     try {
       const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedItems)
+        body: JSON.stringify(itemPayload)
       });
       const result = await res.json();
       if (result.success) {
@@ -384,147 +384,25 @@ export default function CreateItem() {
         tsData = {};
     }
 
-    const width = tsData.tsWidth || 50;
-    const height = tsData.tsHeight || 25;
-    const mt = tsData.tsMarginTop || 0;
-    const mb = tsData.tsMarginBottom || 0;
-    const ml = tsData.tsMarginLeft || 0;
-    const mr = tsData.tsMarginRight || 0;
-
-    const showCode = tsData.tsOptCode !== false;
-    const showName = tsData.tsOptName !== false;
-    const showPrice = tsData.tsOptPrice !== false;
-    const showQR = tsData.tsOptQR !== false;
-
-    const sizeCode = tsData.tsSizeCode || 12;
-    const sizeName = tsData.tsSizeName || 14;
-    const sizePrice = tsData.tsSizePrice || 16;
-    const sizeQR = tsData.tsSizeQR || 35;
-    
-    const alignText = (tsData.tsAlign || 'left').toLowerCase();
-    const jContent = alignText === 'center' ? 'center' : (alignText === 'left' ? 'flex-start' : 'flex-end');
-    const qrImgWidthMm = width * (sizeQR / 100);
-
-    const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${code}`;
-
-    let tagsHtml = '';
-    for (let i = 0; i < printCopies; i++) {
-      tagsHtml += `
-      <div class="tag">
-          <div class="tag-content">
-              <div class="tag-inner-group" style="justify-content: ${jContent};">
-                  <div class="qr-col" style="display: ${showQR ? 'flex' : 'none'}; width: ${showQR ? qrImgWidthMm + 'mm' : '0mm'}; height: ${showQR ? qrImgWidthMm + 'mm' : '0mm'};">
-                      <img src="${qrDataUrl}" alt="QR">
-                  </div>
-                  <div class="text-col" style="width: auto; align-items: ${alignText === 'center' ? 'center' : (alignText === 'left' ? 'flex-start' : 'flex-end')}; text-align: ${alignText};">
-                      ${showCode ? `<div class="code">${code || ''}</div>` : ''}
-                      ${showName ? `<div class="name">${name || 'Unknown Item'}</div>` : ''}
-                      ${showPrice ? `<div class="price">₹${parseFloat(sellingPrice).toFixed(2)}/${unit || 'Unit'}</div>` : ''}
-                  </div>
-              </div>
-          </div>
-      </div>`;
-    }
-
-    const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Print Item Tag</title>
-<style>
-@media print { 
-    @page { 
-        margin: 0; 
-        size: ${width}mm ${height}mm;
-    } 
-    body { margin: 0; padding: 0; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .tag { margin: 0 !important; page-break-after: always; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-}
-body { 
-    font-family: 'Manrope', sans-serif;
-    margin: 0;
-    padding: 0;
-    background: #fff;
-}
-.tag { 
-    width: ${width}mm; 
-    height: ${height}mm; 
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background: white;
-    margin: 0 auto;
-    overflow: hidden;
-}
-.tag-content {
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    padding-top: ${mt}mm;
-    padding-bottom: ${mb}mm;
-    padding-left: ${ml}mm;
-    padding-right: ${mr}mm;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: ${jContent};
-}
-.tag-inner-group {
-    display: flex;
-    gap: 10px;
-    max-width: 100%;
-    align-items: center;
-}
-.qr-col { 
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
-    flex-shrink: 0;
-}
-.qr-col img { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: contain; 
-}
-.text-col { 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: center; 
-    gap: 2px; 
-    flex: 0 1 auto;
-    min-width: 0;
-}
-.name, .code, .price { 
-    line-height: 1.2; 
-    white-space: nowrap; 
-    overflow: hidden; 
-    text-overflow: ellipsis; 
-    color: #000; 
-    font-weight: 600; 
-}
-.name { font-size: ${sizeName}px; }
-.code { font-size: ${sizeCode}px; }
-.price { font-size: ${sizePrice}px; }
-</style>
-</head>
-<body>
-    ${tagsHtml}
-    <script>
-        window.onload = function() { 
-            setTimeout(function() { 
-                window.print(); 
-                setTimeout(function() { window.close(); }, 500);
-            }, 500); 
-        }
-    </script>
-</body>
-</html>`;
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
     setShowPrintModal(false);
+
+    const result = await printItemTags({
+        item: {
+            code,
+            name,
+            sellingPrice,
+            unit: getShortUnitName(unit),
+            category,
+            desc: description || ''
+        },
+        settings: tsData,
+        copies: printCopies,
+        start: 1
+    });
+
+    if (!result.success) {
+        showToast(result.error || 'Failed to print item tags', 'error');
+    }
   };
 
   const getShortUnitName = (uName) => {

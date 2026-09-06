@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Edit3, Trash2, Search, Printer } from 'lucide-react';
 import DateFilterPopover from '../components/DateFilterPopover';
+import { printA4Document } from '../utils/a4Printer';
 
 const ViewCustomer = ({ 
     customers = [], 
@@ -44,10 +45,14 @@ const ViewCustomer = ({
     const custPayments = (payments || []).filter(p => String(p.customerId) === String(currentCustomer.id) || p.customerName === currentCustomer.customerName || p.customerName === currentCustomer.name);
     const custReturns = (salesReturns || []).filter(sr => String(sr.customerId) === String(currentCustomer.id) || sr.customerName === currentCustomer.customerName || sr.customerName === currentCustomer.name);
 
-    const totalInvoiced = custInvoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount || inv.grandTotal) || 0), 0);
-    const directPaid = custInvoices.reduce((sum, inv) => sum + (parseFloat(inv.receivedAmount || inv.paidAmount || 0)), 0);
-    const standalonePaid = custPayments.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount || 0) + (parseFloat(p.discount || 0))), 0);
-    const totalReturned = custReturns.reduce((sum, r) => sum + (parseFloat(r.grandTotal || r.totalAmount) || 0), 0);
+    const activeInvoices = custInvoices.filter(si => si.status !== 'CANCELLED');
+    const activePayments = custPayments.filter(p => p.status !== 'CANCELLED');
+    const activeReturns = custReturns.filter(sr => sr.status !== 'CANCELLED');
+
+    const totalInvoiced = activeInvoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount || inv.grandTotal) || 0), 0);
+    const directPaid = activeInvoices.reduce((sum, inv) => sum + (parseFloat(inv.receivedAmount || inv.paidAmount || 0)), 0);
+    const standalonePaid = activePayments.reduce((sum, p) => sum + (parseFloat(p.receivedAmount || p.amount || p.paidAmount || 0) + (parseFloat(p.discount || 0))), 0);
+    const totalReturned = activeReturns.reduce((sum, r) => sum + (parseFloat(r.grandTotal || r.totalAmount) || 0), 0);
     const openingBal = parseFloat(currentCustomer.openingBalance || currentCustomer.opening_balance || 0);
     const pendingBalance = Math.max(0, openingBal + totalInvoiced - (directPaid + standalonePaid) - totalReturned);
 
@@ -73,6 +78,7 @@ const ViewCustomer = ({
     // Combine transactions for Transaction List Tab
     const allTransactions = [
         ...custInvoices.map(inv => {
+            const isCancelled = inv.status === 'CANCELLED';
             const amt = parseFloat(inv.totalAmount || inv.grandTotal) || 0;
             const due = parseFloat(inv.pendingToReceive) || 0;
             return {
@@ -81,13 +87,15 @@ const ViewCustomer = ({
                 type: 'Sales Invoice',
                 transactionNo: inv.invoiceNumber || inv.invoiceNo || '-',
                 amount: amt,
-                dueAmount: due,
+                dueAmount: isCancelled ? 0 : due,
                 isDebit: true,
-                status: due === 0 ? 'Paid' : 'Pending',
+                status: isCancelled ? 'Cancelled' : (due === 0 ? 'Paid' : 'Pending'),
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(inv.date)
             };
         }),
         ...custPayments.map(p => {
+            const isCancelled = p.status === 'CANCELLED';
             const amt = parseFloat(p.receivedAmount || p.amount || p.paidAmount) || 0;
             return {
                 id: p.id || p.arNo,
@@ -97,17 +105,21 @@ const ViewCustomer = ({
                 amount: amt,
                 dueAmount: 0,
                 isDebit: false,
-                status: 'Completed',
+                status: isCancelled ? 'Cancelled' : 'Completed',
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(p.date)
             };
         }),
         ...custReturns.map(r => {
+            const isCancelled = r.status === 'CANCELLED';
             const amt = parseFloat(r.grandTotal || r.totalAmount) || 0;
             const refundAmt = parseFloat(r.refundAmount) || 0;
             const storeCred = parseFloat(r.storeCredit) || 0;
             
             let status = 'Credited';
-            if (r.refundMode === 'Adjust against Invoice' || r.isAdjusted || r.status === 'Adjusted') {
+            if (isCancelled) {
+                status = 'Cancelled';
+            } else if (r.refundMode === 'Adjust against Invoice' || r.isAdjusted || r.status === 'Adjusted') {
                 status = 'Adjusted';
             } else if (refundAmt > 0 && storeCred === 0) {
                 status = 'Returned';
@@ -124,6 +136,7 @@ const ViewCustomer = ({
                 dueAmount: 0,
                 isDebit: false,
                 status: status,
+                isCancelled: isCancelled,
                 rawDate: parseRawDate(r.date)
             };
         })
@@ -133,8 +146,8 @@ const ViewCustomer = ({
     const stmtStartDate = statementDateFilter ? statementDateFilter.start : new Date(2000, 0, 1);
     const stmtEndDate = statementDateFilter ? statementDateFilter.end : new Date(new Date().getFullYear() + 5, 11, 31, 23, 59, 59);
 
-    // Chronologically Sorted Ledger Array (Ascending for Running Balance)
-    const chronoTx = [...allTransactions].sort((a, b) => a.rawDate - b.rawDate);
+    // Chronologically Sorted Ledger Array (Ascending for Running Balance, active only)
+    const chronoTx = allTransactions.filter(tx => !tx.isCancelled).sort((a, b) => a.rawDate - b.rawDate);
 
     let openingBalance = parseFloat(currentCustomer.openingBalance || 0);
     let periodInvoiced = 0;
@@ -305,36 +318,7 @@ const ViewCustomer = ({
     const handlePrintStatement = () => {
         if (!iframeRef.current) return;
         const printContent = generateStatementHTML();
-
-        const html = `
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Print Statement of Account</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-                    <style>
-                        body { margin: 0; padding: 10px; font-family: 'Manrope', sans-serif; background: white; display: flex; justify-content: center; }
-                        @media print { 
-                            @page { margin: 4mm auto; size: A4 portrait; } 
-                            body { padding: 0; margin: 0; display: flex; justify-content: center; background: white; } 
-                            .statement-outer-box { box-shadow: none !important; padding: 12px !important; width: 100% !important; max-width: 100% !important; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${printContent}
-                    <script>
-                        window.onload = function() { setTimeout(function() { window.print(); }, 500); }
-                    </script>
-                </body>
-            </html>
-        `;
-        
-        const doc = iframeRef.current.contentWindow.document;
-        doc.open();
-        doc.write(html);
-        doc.close();
+        printA4Document(printContent, `Statement - ${customer?.customerName || 'Customer'}`);
     };
 
     return (
@@ -369,10 +353,10 @@ const ViewCustomer = ({
                                 const isSelected = String(cId) === String(selectedCustomerId);
                                 const cName = c.customerName || c.name || 'Walk In Customer';
                                 
-                                // Customer balance calculation
-                                const cInvs = (salesInvoices || []).filter(si => String(si.customerId) === String(cId) || si.customerName === cName);
-                                const cPmts = (payments || []).filter(p => String(p.customerId) === String(cId) || p.customerName === cName);
-                                const cRets = (salesReturns || []).filter(sr => String(sr.customerId) === String(cId) || sr.customerName === cName);
+                                // Customer balance calculation (active transactions only)
+                                const cInvs = (salesInvoices || []).filter(si => (String(si.customerId) === String(cId) || si.customerName === cName) && si.status !== 'CANCELLED');
+                                const cPmts = (payments || []).filter(p => (String(p.customerId) === String(cId) || p.customerName === cName) && p.status !== 'CANCELLED');
+                                const cRets = (salesReturns || []).filter(sr => (String(sr.customerId) === String(cId) || sr.customerName === cName) && sr.status !== 'CANCELLED');
                                 
                                 const invTotal = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount || inv.grandTotal) || 0), 0);
                                 const directPaid = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.receivedAmount || inv.paidAmount || 0)), 0);
@@ -564,6 +548,9 @@ const ViewCustomer = ({
                                                 } else if (t.status === 'Pending') {
                                                     statusBg = '#FEE2E2';
                                                     statusColor = '#B91C1C';
+                                                } else if (t.status === 'Cancelled') {
+                                                    statusBg = '#FEE2E2';
+                                                    statusColor = '#991B1B';
                                                 } else if (t.status === 'Completed') {
                                                     statusBg = '#DBEAFE';
                                                     statusColor = '#1D4ED8';

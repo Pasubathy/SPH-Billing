@@ -18,17 +18,6 @@ const AutoScalingLabel = ({
     const [scale, setScale] = useState(1);
     const [isValid, setIsValid] = useState(true);
 
-    const physicalWidth = tag.tsWidth * 3.78;
-    const physicalHeight = tag.tsHeight * 3.78;
-    
-    const paddingTop = (tag.tsMarginTop ?? 0) * 3.78;
-    const paddingRight = (tag.tsMarginRight ?? 0) * 3.78;
-    const paddingBottom = (tag.tsMarginBottom ?? 0) * 3.78;
-    const paddingLeft = (tag.tsMarginLeft ?? 0) * 3.78;
-
-    const availableWidth = physicalWidth - paddingLeft - paddingRight;
-    const availableHeight = physicalHeight - paddingTop - paddingBottom;
-
     useLayoutEffect(() => {
         // Reset scale and dropped fields on props change
         setScale(1);
@@ -39,6 +28,8 @@ const AutoScalingLabel = ({
     useLayoutEffect(() => {
         if (!containerRef.current || !contentRef.current) return;
 
+        const availableHeight = containerRef.current.clientHeight;
+        const availableWidth = containerRef.current.clientWidth;
         const contentHeight = contentRef.current.scrollHeight;
         
         if (contentHeight > availableHeight && availableHeight > 0) {
@@ -54,7 +45,7 @@ const AutoScalingLabel = ({
             const maxFontSize = Math.max(...(fontSizes.length > 0 ? fontSizes : [MIN_FONT_SIZE]));
             const minScaleForFont = MIN_FONT_SIZE / maxFontSize;
             
-            const qrSizePx = (tag.tsSizeQR / 100) * physicalWidth;
+            const qrSizePx = (tag.tsSizeQR / 100) * (availableWidth || 100);
             const minScaleForQR = tag.tsOptQR ? MIN_QR_SIZE / qrSizePx : 0;
             
             const absoluteMinScale = Math.max(minScaleForFont, minScaleForQR);
@@ -83,17 +74,17 @@ const AutoScalingLabel = ({
             setIsValid(true);
             onValidationUpdate(true);
         }
-    }, [availableHeight, tag, itemData, droppedFields]);
+    }, [tag, itemData, droppedFields]);
 
-    const qrSize = (tag.tsSizeQR / 100) * physicalWidth;
+    const qrSizeMm = ((tag.tsSizeQR / 100) * (tag.tsWidth || 50));
 
     return (
         <div 
             ref={containerRef}
             style={{ 
-                width: `${physicalWidth}px`, 
-                height: `${physicalHeight}px`, 
-                padding: `${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`, 
+                width: `${tag.tsWidth || 50}mm`, 
+                height: `${tag.tsHeight || 25}mm`, 
+                padding: `${tag.tsMarginTop ?? 0}mm ${(tag.tsMarginRight ?? 0)}mm ${(tag.tsMarginBottom ?? 0)}mm ${(tag.tsMarginLeft ?? 0)}mm`, 
                 boxSizing: 'border-box', 
                 overflow: 'hidden', 
                 background: 'white',
@@ -115,10 +106,10 @@ const AutoScalingLabel = ({
             >
                 {tag.tsOptQR && (
                     <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${itemData?.code || '1001'}`} 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(itemData?.code || '1001')}`} 
                         style={{ 
-                            width: `${qrSize * scale}px`, 
-                            height: `${qrSize * scale}px`, 
+                            width: `${qrSizeMm * scale}mm`, 
+                            height: `${qrSizeMm * scale}mm`, 
                             objectFit: 'contain', 
                             flexShrink: 0 
                         }} 

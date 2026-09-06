@@ -4,6 +4,7 @@ import { ArrowLeft, Upload, X, ChevronLeft } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import CustomSelect from '../components/CustomSelect';
 import AutoScalingLabel from '../components/AutoScalingLabel';
+import { validateA4LabelLayout } from '../utils/a4Printer';
 
 const STATES = ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Maharashtra', 'Gujarat', 'Rajasthan', 'Delhi'];
 
@@ -361,6 +362,11 @@ export default function Settings() {
               </div>
             </div>
             <div style={{ flex: 1, background: '#F1F5F9', display: 'flex', flexDirection: 'column' }}>
+              {tag.tsPrintType === 'a4' && !validateA4LabelLayout(tag).valid && (
+                <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '12px 16px', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid #FCA5A5' }}>
+                  ⚠ <b>A4 Layout Overflow:</b> {validateA4LabelLayout(tag).error}
+                </div>
+              )}
               {!isLabelValid && (
                 <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '12px 16px', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid #FCA5A5' }}>
                   The selected label template is too small for the selected content. Increase the label size or remove optional fields.
@@ -369,17 +375,17 @@ export default function Settings() {
               <div style={{ flex: 1, padding: '40px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'auto' }}>
                 {tag.tsPrintType === 'a4' ? (
                   <div style={{
-                    width: `${210 * 3.78}px`,
-                    height: `${297 * 3.78}px`,
+                    width: '210mm',
+                    height: '297mm',
                     background: 'white',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    padding: `${(tag.tsA4MarginTop ?? 12) * 3.78}px ${(tag.tsA4MarginRight ?? 10) * 3.78}px ${(tag.tsA4MarginBottom ?? 12) * 3.78}px ${(tag.tsA4MarginLeft ?? 10) * 3.78}px`,
+                    padding: `${tag.tsA4MarginTop ?? 12}mm ${tag.tsA4MarginRight ?? 10}mm ${tag.tsA4MarginBottom ?? 12}mm ${tag.tsA4MarginLeft ?? 10}mm`,
                     boxSizing: 'border-box',
                     display: 'grid',
-                    gridTemplateColumns: `repeat(${tag.tsA4Cols ?? 4}, ${tag.tsWidth * 3.78}px)`,
-                    gridTemplateRows: `repeat(${tag.tsA4Rows ?? 10}, ${tag.tsHeight * 3.78}px)`,
-                    columnGap: `${(tag.tsA4HSpace ?? 2) * 3.78}px`,
-                    rowGap: `${(tag.tsA4VSpace ?? 2) * 3.78}px`,
+                    gridTemplateColumns: `repeat(${tag.tsA4Cols ?? 4}, ${tag.tsWidth ?? 50}mm)`,
+                    gridTemplateRows: `repeat(${tag.tsA4Rows ?? 10}, ${tag.tsHeight ?? 25}mm)`,
+                    columnGap: `${tag.tsA4HSpace ?? 2}mm`,
+                    rowGap: `${tag.tsA4VSpace ?? 2}mm`,
                     transform: 'scale(0.8)',
                     transformOrigin: 'top center',
                     marginBottom: '-20%' // Offset the empty space left by scaling

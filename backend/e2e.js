@@ -2,7 +2,7 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert');
 const { Client } = require('pg');
 const crypto = require('crypto');
-require('dotenv').config({ path: '../backend/.env' });
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const API_URL = 'http://localhost:3000/api';
 let token = '';

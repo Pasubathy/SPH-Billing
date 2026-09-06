@@ -22,6 +22,7 @@ export default function CreatePayment() {
   const [vendors, setVendors] = useState([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [formIdempotencyKey, setFormIdempotencyKey] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random()));
 
   const [toast, setToast] = useState(null);
   const showToast = (msg, type = 'success') => {
@@ -57,6 +58,7 @@ export default function CreatePayment() {
     
     let bills = purchaseInvoices.filter(pi => {
       if (String(pi.vendorId) !== String(vendorId)) return false;
+      if (pi.status === 'CANCELLED') return false;
       const pend = parseFloat(pi.pendingToPay || pi.pending_to_pay) || 0;
       return pend > 0;
     }).map(pi => {
@@ -180,11 +182,13 @@ export default function CreatePayment() {
             allocations: backendAllocations
         };
 
-        const token = localStorage.getItem('sph_auth_token') || localStorage.getItem('token');
+        const rawToken = localStorage.getItem('sph_auth_token');
+        const token = (rawToken && rawToken !== 'null' && rawToken !== 'undefined') ? rawToken.trim() : null;
         const res = await fetch('/api/vendor-payments/create', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Idempotency-Key': formIdempotencyKey,
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {})
             },
             body: JSON.stringify(payload)
@@ -206,6 +210,7 @@ export default function CreatePayment() {
           setDiscountAmount('');
           setAllocations({});
           setNote('');
+          setFormIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random());
           try {
             const cRes = await fetch('/api/vendor-payment-counter');
             const cData = await cRes.json();

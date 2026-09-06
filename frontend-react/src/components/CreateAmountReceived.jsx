@@ -16,6 +16,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
     const [allocations, setAllocations] = useState({}); // { [invoiceId]: amountString }
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState(null);
+    const [formIdempotencyKey, setFormIdempotencyKey] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random()));
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
@@ -63,6 +64,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
         const cName = (selectedCustomer.name || selectedCustomer.customerName || '').toLowerCase();
         
         let bills = salesInvoices.filter(si => {
+            if (si.status === 'CANCELLED') return false;
             const siCustId = si.customerId ? String(si.customerId) : '';
             const siCustName = (si.customerName || '').toLowerCase().trim();
             const matches = (String(customerId) === 'walk-in' && (!siCustId || siCustId === 'walk-in' || siCustName === 'walk in customer')) ||
@@ -208,11 +210,13 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                 allocations: backendAllocations
             };
 
-            const token = localStorage.getItem('sph_auth_token') || localStorage.getItem('token');
+            const rawToken = localStorage.getItem('sph_auth_token');
+            const token = (rawToken && rawToken !== 'null' && rawToken !== 'undefined') ? rawToken.trim() : null;
             const res = await fetch('/api/receipts/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Idempotency-Key': formIdempotencyKey,
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 body: JSON.stringify(payload)
@@ -235,6 +239,7 @@ export default function CreateAmountReceived({ onBack, customers, salesInvoices,
                 setDiscountAmount('');
                 setAllocations({});
                 setNote('');
+                setFormIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idem_' + Date.now() + '_' + Math.random());
                 try {
                     const cRes = await fetch('/api/payment-counter');
                     const cData = await cRes.json();

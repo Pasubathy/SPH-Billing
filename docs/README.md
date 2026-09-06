@@ -72,6 +72,7 @@ To run the application locally on Windows, you only need PowerShell (no Node.js 
 
 ---
 
-## 📝 Credentials
-* **Username**: `SPH.admin`
-* **Password**: `SPH@26`
+## 🔐 Authentication & Access Control
+* Access requires configured credentials in your `.env` file (`ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH`).
+* Never commit production passwords or password hashes to version control.
+* Generate strong bcrypt hashes (cost factor 12) for deployment.

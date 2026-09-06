@@ -6,9 +6,11 @@ import {
     Truck, 
     Boxes, 
     Clock,
-    X
+    X,
+    AlertCircle
 } from 'lucide-react';
 import DateFilterPopover from '../components/DateFilterPopover';
+import apiFetch from '../utils/api';
 
 const Home = () => {
     const navigate = useNavigate();
@@ -23,6 +25,10 @@ const Home = () => {
     const [items, setItems] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [vendors, setVendors] = useState([]);
+
+    // Server-side Aggregated Summary State
+    const [summaryData, setSummaryData] = useState(null);
+    const [summaryError, setSummaryError] = useState(null);
 
     // Today's Date Filter Helper
     const getTodayFilter = () => {
@@ -53,7 +59,38 @@ const Home = () => {
         return dateFilter.label === today.label && dateFilter.type === 'day';
     }, [dateFilter]);
 
-    // Load All Business Data
+    // Fetch High-Performance Server Aggregated Summary
+    useEffect(() => {
+        let isMounted = true;
+        const fetchDashboardSummary = async () => {
+            try {
+                let url = '/api/reports/dashboard-summary';
+                if (dateFilter && dateFilter.start && dateFilter.end) {
+                    const startStr = `${dateFilter.start.getFullYear()}-${String(dateFilter.start.getMonth() + 1).padStart(2, '0')}-${String(dateFilter.start.getDate()).padStart(2, '0')}`;
+                    const endStr = `${dateFilter.end.getFullYear()}-${String(dateFilter.end.getMonth() + 1).padStart(2, '0')}-${String(dateFilter.end.getDate()).padStart(2, '0')}`;
+                    url += `?startDate=${encodeURIComponent(startStr)}&endDate=${encodeURIComponent(endStr)}`;
+                }
+                const res = await apiFetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.summary && isMounted) {
+                        setSummaryData(data.summary);
+                        setSummaryError(null);
+                    }
+                } else {
+                    if (isMounted) setSummaryError('Server summary unavailable; displaying client data');
+                }
+            } catch (err) {
+                console.warn('Dashboard summary error, using client fallback:', err.message);
+                if (isMounted) setSummaryError('Server summary unavailable; displaying client data');
+            }
+        };
+
+        fetchDashboardSummary();
+        return () => { isMounted = false; };
+    }, [dateFilter]);
+
+    // Background Load All Raw Business Data (For Fallback and Masters Navigation)
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
@@ -68,15 +105,15 @@ const Home = () => {
                     resCusts, 
                     resVendors
                 ] = await Promise.all([
-                    fetch('/api/sales').then(r => r.json()).catch(() => []),
-                    fetch('/api/sales-returns').then(r => r.json()).catch(() => []),
-                    fetch('/api/payments').then(r => r.json()).catch(() => []),
-                    fetch('/api/purchase-invoices').then(r => r.json()).catch(() => []),
-                    fetch('/api/purchase-returns').then(r => r.json()).catch(() => []),
-                    fetch('/api/vendor-payments').then(r => r.json()).catch(() => []),
-                    fetch('/api/items').then(r => r.json()).catch(() => []),
-                    fetch('/api/customers').then(r => r.json()).catch(() => []),
-                    fetch('/api/vendors').then(r => r.json()).catch(() => [])
+                    apiFetch('/api/sales').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/sales-returns').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/payments').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/purchase-invoices').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/purchase-returns').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/vendor-payments').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/items').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/customers').then(r => r.json()).catch(() => []),
+                    apiFetch('/api/vendors').then(r => r.json()).catch(() => [])
                 ]);
 
                 setSales(Array.isArray(resSales) ? resSales : []);
@@ -89,7 +126,7 @@ const Home = () => {
                 setCustomers(Array.isArray(resCusts) ? resCusts : []);
                 setVendors(Array.isArray(resVendors) ? resVendors : []);
             } catch (err) {
-                console.error("Failed to load dashboard data", err);
+                console.error("Failed to load background dashboard data", err);
             }
         };
 
@@ -125,12 +162,12 @@ const Home = () => {
         return itemTime >= start && itemTime <= end;
     };
 
-    // Filtered Datasets based on Date Filter
-    const filteredSales = useMemo(() => sales.filter(s => matchesDateFilter(s.date)), [sales, dateFilter]);
-    const filteredSalesReturns = useMemo(() => salesReturns.filter(r => matchesDateFilter(r.date)), [salesReturns, dateFilter]);
-    const filteredPayments = useMemo(() => payments.filter(p => matchesDateFilter(p.date)), [payments, dateFilter]);
-    const filteredPurchases = useMemo(() => purchases.filter(p => matchesDateFilter(p.date)), [purchases, dateFilter]);
-    const filteredPurchaseReturns = useMemo(() => purchaseReturns.filter(pr => matchesDateFilter(pr.date)), [purchaseReturns, dateFilter]);
+    // Filtered Datasets based on Date Filter (excluding CANCELLED)
+    const filteredSales = useMemo(() => sales.filter(s => matchesDateFilter(s.date) && s.status !== 'CANCELLED'), [sales, dateFilter]);
+    const filteredSalesReturns = useMemo(() => salesReturns.filter(r => matchesDateFilter(r.date) && r.status !== 'CANCELLED'), [salesReturns, dateFilter]);
+    const filteredPayments = useMemo(() => payments.filter(p => matchesDateFilter(p.date) && p.status !== 'CANCELLED'), [payments, dateFilter]);
+    const filteredPurchases = useMemo(() => purchases.filter(p => matchesDateFilter(p.date) && p.status !== 'CANCELLED'), [purchases, dateFilter]);
+    const filteredPurchaseReturns = useMemo(() => purchaseReturns.filter(pr => matchesDateFilter(pr.date) && pr.status !== 'CANCELLED'), [purchaseReturns, dateFilter]);
 
     // ==========================================
     // SCORECARD METRIC CALCULATIONS
@@ -147,8 +184,9 @@ const Home = () => {
 
     // Global Amount to Receive (Customer Pending)
     const globalCustomerPending = useMemo(() => {
-        // Unpaid amount across all sales invoices (including Walk-in and registered customers)
+        // Unpaid amount across all active sales invoices (including Walk-in and registered customers)
         const totalInvoicePending = sales.reduce((sum, s) => {
+            if (s.status === 'CANCELLED') return sum;
             const grand = parseFloat(s.grandTotal || s.totalAmount || s.total || s.amount || 0);
             const paid = parseFloat(s.receivedAmount !== undefined ? s.receivedAmount : (s.paidAmount !== undefined ? s.paidAmount : (s.paid_amount || 0)));
             const pending = s.pendingToReceive !== undefined ? parseFloat(s.pendingToReceive) : (s.pending_to_receive !== undefined ? parseFloat(s.pending_to_receive) : Math.max(0, grand - paid));
@@ -170,8 +208,9 @@ const Home = () => {
 
     // Global Pending to Pay (Vendor Pending)
     const globalVendorPending = useMemo(() => {
-        // Unpaid amount across all purchase invoices
+        // Unpaid amount across all active purchase invoices
         const totalPiPending = purchases.reduce((sum, p) => {
+            if (p.status === 'CANCELLED') return sum;
             const grand = parseFloat(p.amount || p.grandTotal || p.total || 0);
             const paid = parseFloat(p.paidAmount !== undefined ? p.paidAmount : (p.paid_amount || 0));
             const pending = p.pendingToPay !== undefined ? parseFloat(p.pendingToPay) : (p.pending_to_pay !== undefined ? parseFloat(p.pending_to_pay) : Math.max(0, grand - paid));
@@ -280,11 +319,13 @@ const Home = () => {
             };
 
             const mSales = sales.filter(s => {
+                if (s.status === 'CANCELLED') return false;
                 const sd = parseDateObj(s.date);
                 return sd && !isNaN(sd.getTime()) && sd.getFullYear() === mYear && sd.getMonth() === mMonth;
             }).reduce((acc, s) => acc + (parseFloat(s.grandTotal || s.totalAmount) || 0), 0);
 
             const mPurchases = purchases.filter(p => {
+                if (p.status === 'CANCELLED') return false;
                 const pd = parseDateObj(p.date);
                 return pd && !isNaN(pd.getTime()) && pd.getFullYear() === mYear && pd.getMonth() === mMonth;
             }).reduce((acc, p) => acc + (parseFloat(p.amount || p.grandTotal) || 0), 0);
@@ -306,8 +347,9 @@ const Home = () => {
     const topDebtors = useMemo(() => {
         const debtorMap = new Map();
 
-        // 1. Group all invoice pending amounts by customer
+        // 1. Group all active invoice pending amounts by customer
         sales.forEach(s => {
+            if (s.status === 'CANCELLED') return;
             const cId = s.customerId ? String(s.customerId) : (s.customerName ? s.customerName.toLowerCase() : 'walk-in');
             const cName = s.customerName || 'Walk In Customer';
             const grand = parseFloat(s.grandTotal || s.totalAmount || s.total || s.amount || 0);
@@ -353,21 +395,23 @@ const Home = () => {
     }, [sales, customers]);
 
     // ==========================================
-    // RECENT INVOICES (Latest 5)
+    // RECENT INVOICES (Latest 5, active)
     // ==========================================
     const recentInvoices = useMemo(() => {
-        return [...sales]
-            .reverse()
-            .slice(0, 5);
+        return sales
+            .filter(s => s.status !== 'CANCELLED')
+            .slice(-5)
+            .reverse();
     }, [sales]);
 
     // ==========================================
-    // RECENT PAYMENTS RECEIVED (Latest 5)
+    // RECENT PAYMENTS RECEIVED (Latest 5, active)
     // ==========================================
     const recentPayments = useMemo(() => {
-        return [...payments]
-            .reverse()
-            .slice(0, 5);
+        return payments
+            .filter(p => p.status !== 'CANCELLED')
+            .slice(-5)
+            .reverse();
     }, [payments]);
 
     const formatDate = (dateStr) => {
@@ -377,6 +421,21 @@ const Home = () => {
         if (isNaN(d.getTime())) return dateStr;
         return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
+
+    // Active Metric Bindings (Server-Aggregated Primary with Graceful Client Fallback)
+    const activeNetSales = summaryData ? summaryData.netSales : netSales;
+    const activeCustomerPending = summaryData ? summaryData.globalCustomerPending : globalCustomerPending;
+    const activeTotalPurchases = summaryData ? summaryData.totalPurchaseAmount : totalPurchaseAmount;
+    const activeVendorPending = summaryData ? summaryData.globalVendorPending : globalVendorPending;
+    const activeInventoryValuation = summaryData ? summaryData.inventoryValuation : inventoryValuation;
+    const activeSalesCount = summaryData ? summaryData.salesCount : filteredSales.length;
+    const activePurchaseCount = summaryData ? summaryData.purchaseCount : filteredPurchases.length;
+    const activeMonthlyComparison = (summaryData && summaryData.monthlyComparison) ? summaryData.monthlyComparison : monthlyComparison;
+    const activeTopSelling = (summaryData && summaryData.topSellingProducts) ? summaryData.topSellingProducts : topSellingProducts;
+    const activeCategoryBreakdown = (summaryData && summaryData.categoryBreakdown) ? summaryData.categoryBreakdown : categoryBreakdown;
+    const activeTopDebtors = (summaryData && summaryData.topDebtors) ? summaryData.topDebtors : topDebtors;
+    const activeRecentInvoices = (summaryData && summaryData.recentInvoices) ? summaryData.recentInvoices : recentInvoices;
+    const activeRecentPayments = (summaryData && summaryData.recentPayments) ? summaryData.recentPayments : recentPayments;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', backgroundColor: '#F8FAFC', padding: '20px 24px', fontFamily: 'Manrope, sans-serif' }}>
@@ -391,6 +450,11 @@ const Home = () => {
                         <span>Business Dashboard</span>
                         <span>•</span>
                         <span>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        {summaryData && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: '10px', fontSize: '11px', background: '#DCFCE7', color: '#166534', fontWeight: '600' }}>
+                                Fast Summary Active
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -437,9 +501,9 @@ const Home = () => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
-                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{filteredSales.length} Bills</span>
+                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{activeSalesCount} Bills</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#000B58' }}>
-                            ₹{netSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₹{activeNetSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
@@ -455,7 +519,7 @@ const Home = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
                         <span style={{ fontSize: '11.5px', color: '#64748B' }}>Customer Dues</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#EF4444' }}>
-                            ₹{globalCustomerPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₹{activeCustomerPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
@@ -469,9 +533,9 @@ const Home = () => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
-                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{filteredPurchases.length} Invoices</span>
+                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{activePurchaseCount} Invoices</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#6D28D9' }}>
-                            ₹{totalPurchaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₹{activeTotalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
@@ -487,7 +551,7 @@ const Home = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
                         <span style={{ fontSize: '11.5px', color: '#64748B' }}>Supplier Dues</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#D97706' }}>
-                            ₹{globalVendorPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₹{activeVendorPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
@@ -503,7 +567,7 @@ const Home = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
                         <span style={{ fontSize: '11.5px', color: '#64748B' }}>{items.length} Items</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#10B981' }}>
-                            ₹{inventoryValuation.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₹{activeInventoryValuation.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
@@ -532,9 +596,9 @@ const Home = () => {
 
                     {/* Interactive Bar Chart Visualization */}
                     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '170px', padding: '10px 4px 0 4px', borderBottom: '1px solid #E2E8F0', gap: '8px' }}>
-                        {monthlyComparison.months.map((m, idx) => {
-                            const salesHeight = Math.max(8, Math.round((m.sales / monthlyComparison.maxVal) * 140));
-                            const purchaseHeight = Math.max(8, Math.round((m.purchases / monthlyComparison.maxVal) * 140));
+                        {activeMonthlyComparison.months.map((m, idx) => {
+                            const salesHeight = Math.max(8, Math.round((m.sales / activeMonthlyComparison.maxVal) * 140));
+                            const purchaseHeight = Math.max(8, Math.round((m.purchases / activeMonthlyComparison.maxVal) * 140));
 
                             return (
                                 <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: '6px' }}>
@@ -580,8 +644,8 @@ const Home = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, justifyContent: 'center' }}>
-                        {topSellingProducts.length > 0 ? topSellingProducts.map((p, idx) => (
-                            <div key={p.code || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: idx !== topSellingProducts.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
+                        {activeTopSelling.length > 0 ? activeTopSelling.map((p, idx) => (
+                            <div key={p.code || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: idx !== activeTopSelling.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                     <span style={{ fontSize: '12px', fontWeight: '700', color: '#94A3B8', width: '16px' }}>#{idx + 1}</span>
                                     <div style={{ minWidth: 0 }}>
@@ -612,7 +676,7 @@ const Home = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, justifyContent: 'center' }}>
-                        {categoryBreakdown.length > 0 ? categoryBreakdown.map((cat, idx) => (
+                        {activeCategoryBreakdown.length > 0 ? activeCategoryBreakdown.map((cat, idx) => (
                             <div key={idx}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                                     <span style={{ fontWeight: '600', color: '#1E293B' }}>{cat.category}</span>
@@ -652,7 +716,7 @@ const Home = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {recentInvoices.length > 0 ? recentInvoices.map((inv, idx) => {
+                                {activeRecentInvoices.length > 0 ? activeRecentInvoices.map((inv, idx) => {
                                     const amt = parseFloat(inv.grandTotal || inv.totalAmount) || 0;
                                     return (
                                         <tr 
@@ -694,7 +758,7 @@ const Home = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {topDebtors.length > 0 ? topDebtors.map((debtor, idx) => (
+                                {activeTopDebtors.length > 0 ? activeTopDebtors.map((debtor, idx) => (
                                     <tr 
                                         key={debtor.id || idx}
                                         onClick={() => navigate('/sales#customer')}
@@ -733,7 +797,7 @@ const Home = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {recentPayments.length > 0 ? recentPayments.map((pmt, idx) => {
+                                {activeRecentPayments.length > 0 ? activeRecentPayments.map((pmt, idx) => {
                                     const amt = parseFloat(pmt.amount !== undefined ? pmt.amount : (pmt.paidAmount !== undefined ? pmt.paidAmount : (pmt.receivedAmount || 0))) || 0;
                                     return (
                                         <tr 
