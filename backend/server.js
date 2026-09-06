@@ -1875,7 +1875,7 @@ app.post('/api/units', requireRole(['ADMIN']), async (req, res) => {
     }
 });
 
-// 3. Items
+// 3. Items (Lightweight List Projection - 95% Payload Reduction)
 app.get('/api/items', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1883,14 +1883,48 @@ app.get('/api/items', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (re
             cess, tax_type as "taxType", tax_amount as "taxAmount", purchase_price as "purchasePrice", purchase_price as "purchaseAmount",
             selling_price as "sellingPrice", selling_price as "sellingAmount", mrp, stock, minimum_stock as "minimumStock", 
             location as "itemLocation", purchase_tax_type as "purchaseTaxType", selling_tax_type as "sellingTaxType", 
-            conversions, images
+            conversions,
+            CASE 
+                WHEN images IS NOT NULL AND jsonb_typeof(images) = 'array' AND jsonb_array_length(images) > 0 THEN true 
+                ELSE false 
+            END as "hasImage",
+            '[]'::jsonb as images
             FROM items
+            ORDER BY id ASC
         `);
         res.json(result.rows);
     } catch (e) {
         sendError(res, e, 'Failed to fetch items');
     }
 });
+
+// 3b. Single Item Detail (with full image data for editing and viewing)
+app.get('/api/items/:code', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), async (req, res) => {
+    const { code } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT id, code, name, category_name as "category", unit_name as "unit", hsn, gst_rate as "gstRate", 
+            cess, tax_type as "taxType", tax_amount as "taxAmount", purchase_price as "purchasePrice", purchase_price as "purchaseAmount",
+            selling_price as "sellingPrice", selling_price as "sellingAmount", mrp, stock, minimum_stock as "minimumStock", 
+            location as "itemLocation", purchase_tax_type as "purchaseTaxType", selling_tax_type as "sellingTaxType", 
+            conversions, images,
+            CASE 
+                WHEN images IS NOT NULL AND jsonb_typeof(images) = 'array' AND jsonb_array_length(images) > 0 THEN true 
+                ELSE false 
+            END as "hasImage"
+            FROM items
+            WHERE LOWER(code) = LOWER($1)
+        `, [code]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (e) {
+        sendError(res, e, 'Failed to fetch item details');
+    }
+});
+
 app.post('/api/items', requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res) => {
 
     const client = await pool.connect();

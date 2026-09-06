@@ -62,7 +62,15 @@ export default function CreateItem() {
         setAllItems(resItems || []);
 
         if (editCodeParam) {
-          const item = resItems.find(i => String(i.code) === String(editCodeParam));
+          let item = (resItems || []).find(i => String(i.code) === String(editCodeParam));
+          if (item && item.hasImage) {
+            try {
+              const detailRes = await fetch(`/api/items/${encodeURIComponent(editCodeParam)}`);
+              if (detailRes.ok) {
+                item = await detailRes.json();
+              }
+            } catch (e) {}
+          }
           if (item) {
             setCode(item.code || '');
             setName(item.name || '');

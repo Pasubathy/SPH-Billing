@@ -60,8 +60,23 @@ export default function ViewItem() {
 
         // Find active item
         let currentItem = null;
-        if (code) {
-          currentItem = resItems.find(item => String(item.code) === String(code));
+        const targetCode = code || (resItems && resItems.length > 0 ? resItems[0].code : null);
+        if (targetCode) {
+          const found = resItems.find(item => String(item.code) === String(targetCode));
+          if (found && found.hasImage) {
+            try {
+              const detailRes = await fetch(`/api/items/${encodeURIComponent(targetCode)}`);
+              if (detailRes.ok) {
+                currentItem = await detailRes.json();
+              } else {
+                currentItem = found;
+              }
+            } catch (e) {
+              currentItem = found;
+            }
+          } else {
+            currentItem = found || null;
+          }
         }
         if (!currentItem && resItems && resItems.length > 0) {
           currentItem = resItems[0];
