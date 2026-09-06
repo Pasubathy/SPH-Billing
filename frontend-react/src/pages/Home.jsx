@@ -90,48 +90,8 @@ const Home = () => {
         return () => { isMounted = false; };
     }, [dateFilter]);
 
-    // Background Load All Raw Business Data (For Fallback and Masters Navigation)
-    useEffect(() => {
-        const fetchDashboardData = async () => {
-            try {
-                const [
-                    resSales, 
-                    resReturns, 
-                    resPayments, 
-                    resPurchases, 
-                    resPReturns, 
-                    resVPayments, 
-                    resItems, 
-                    resCusts, 
-                    resVendors
-                ] = await Promise.all([
-                    apiFetch('/api/sales').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/sales-returns').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/payments').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/purchase-invoices').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/purchase-returns').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/vendor-payments').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/items').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/customers').then(r => r.json()).catch(() => []),
-                    apiFetch('/api/vendors').then(r => r.json()).catch(() => [])
-                ]);
-
-                setSales(Array.isArray(resSales) ? resSales : []);
-                setSalesReturns(Array.isArray(resReturns) ? resReturns : []);
-                setPayments(Array.isArray(resPayments) ? resPayments : []);
-                setPurchases(Array.isArray(resPurchases) ? resPurchases : []);
-                setPurchaseReturns(Array.isArray(resPReturns) ? resPReturns : []);
-                setVendorPayments(Array.isArray(resVPayments) ? resVPayments : []);
-                setItems(Array.isArray(resItems) ? resItems : []);
-                setCustomers(Array.isArray(resCusts) ? resCusts : []);
-                setVendors(Array.isArray(resVendors) ? resVendors : []);
-            } catch (err) {
-                console.error("Failed to load background dashboard data", err);
-            }
-        };
-
-        fetchDashboardData();
-    }, []);
+    // Optimization #2: Redundant 9 raw table background fetches removed.
+    // Dashboard relies exclusively on /api/reports/dashboard-summary above.
 
     // Date Filter Helper
     const matchesDateFilter = (dateStr) => {
@@ -428,6 +388,7 @@ const Home = () => {
     const activeTotalPurchases = summaryData ? summaryData.totalPurchaseAmount : totalPurchaseAmount;
     const activeVendorPending = summaryData ? summaryData.globalVendorPending : globalVendorPending;
     const activeInventoryValuation = summaryData ? summaryData.inventoryValuation : inventoryValuation;
+    const activeItemCount = summaryData ? (summaryData.itemCount ?? 0) : items.length;
     const activeSalesCount = summaryData ? summaryData.salesCount : filteredSales.length;
     const activePurchaseCount = summaryData ? summaryData.purchaseCount : filteredPurchases.length;
     const activeMonthlyComparison = (summaryData && summaryData.monthlyComparison) ? summaryData.monthlyComparison : monthlyComparison;
@@ -565,7 +526,7 @@ const Home = () => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '6px' }}>
-                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{items.length} Items</span>
+                        <span style={{ fontSize: '11.5px', color: '#64748B' }}>{summaryData ? `${summaryData.itemCount} Items` : '0 Items'}</span>
                         <span style={{ fontSize: '20px', fontWeight: '700', color: '#10B981' }}>
                             ₹{activeInventoryValuation.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>

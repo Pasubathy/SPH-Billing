@@ -4124,9 +4124,10 @@ app.get('/api/reports/dashboard-summary', requireRole(['ADMIN', 'ACCOUNTANT']), 
                     (SELECT COALESCE(SUM(opening_balance), 0) FROM vendors) as "globalVendorPending"
             `),
 
-            // 6. Inventory Valuation
+            // 6. Inventory Valuation & Item Count
             pool.query(`
-                SELECT COALESCE(SUM(stock * purchase_price), 0)::numeric as "inventoryValuation" 
+                SELECT COALESCE(SUM(stock * purchase_price), 0)::numeric as "inventoryValuation",
+                       COUNT(*)::int as "itemCount"
                 FROM items
             `),
 
@@ -4233,6 +4234,7 @@ app.get('/api/reports/dashboard-summary', requireRole(['ADMIN', 'ACCOUNTANT']), 
         const globalCustomerPending = parseFloat(customerPendingRes.rows[0]?.globalCustomerPending) || 0;
         const globalVendorPending = parseFloat(vendorPendingRes.rows[0]?.globalVendorPending) || 0;
         const inventoryValuation = parseFloat(valuationRes.rows[0]?.inventoryValuation) || 0;
+        const itemCount = parseInt(valuationRes.rows[0]?.itemCount) || 0;
 
         // Process Category Breakdown with percentages & colors
         const catColors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1'];
@@ -4307,6 +4309,7 @@ app.get('/api/reports/dashboard-summary', requireRole(['ADMIN', 'ACCOUNTANT']), 
                 globalCustomerPending,
                 globalVendorPending,
                 inventoryValuation,
+                itemCount,
                 topSellingProducts,
                 categoryBreakdown,
                 monthlyComparison: {
